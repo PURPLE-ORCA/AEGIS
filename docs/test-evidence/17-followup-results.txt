@@ -1,0 +1,36 @@
+CAESURA-ISLAND follow-up verification
+Date: 2026-08-10 (Africa/Casablanca)
+
+PASS — Codex quota semantics
+- Sanitized live response: used_percent=58, limit_window_seconds=604800.
+- 604800 seconds is a 7-day window; remaining quota is 42%.
+- GUI rendered: `7d 42% left 5d3h`.
+- Refresh cadence changed from five minutes to one minute.
+- Evidence: 13-caesura-quota.png
+
+PASS — stacked-display hover controls
+- Hover expansion now waits 350ms and cancels when pointer exits.
+- Clicking the collapsed notch still opens immediately.
+- `Expand on hover` setting toggled off and on through the real Settings GUI.
+- Final persisted value: on.
+- Computer Use has no pointer-move primitive, so an automated fast trajectory across both physical displays was not available.
+- Evidence: 14-hover-setting.png
+
+PASS — calm notification palette
+- Square, triangle, and sawtooth game sounds removed.
+- Built-in sounds now use low-gain layered sine partials with smooth attack, decay, and release.
+- Session start, session end, and tool-use sounds default to Off.
+- Completion, error, and approval tones remain enabled.
+- Task-complete preview invoked through Settings; app remained stable.
+- Computer Use cannot judge audible taste.
+- Evidence: 16-calm-sounds.png
+
+PASS — purple-black Caesura appearance
+- New theme added and selected through one-time appearance migration.
+- GUI confirmed selected `Caesura` card and violet/black expanded notch.
+- Evidence: 13-caesura-quota.png, 15-caesura-theme.png
+
+PASS — Settings shortcut
+- GUI testing exposed that Command-comma opened the empty SwiftUI settings scene.
+- Command-comma now routes to the real CAESURA-ISLAND Settings window.
+- Verified full General, Appearance, and Sound forms through Computer Use.

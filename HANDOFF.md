@@ -18,6 +18,15 @@ open build/CAESURA-ISLAND.app
 
 Final verification passed for the debug build, release build, bundle assembly, `Info.plist` validation, and `codesign --verify --deep --strict`. The local bundle is ad-hoc signed, not Developer ID signed or notarized.
 
+## Follow-up improvements
+
+- Codex quota display now classifies windows from API duration, shows remaining quota, and refreshes every minute. Current verified output: `7d 42% left 5d3h`.
+- Notch hover uses a 350ms intent delay. Fast crossings cancel; click opens immediately. Settings includes an `Expand on hover` toggle for click-only mode.
+- Default game-style waveforms were replaced by restrained sine-partial notification tones. Session start/end and tool-use chatter default to Off.
+- New purple-black `Caesura` appearance is selected by default through a one-time preference migration.
+- Command-comma now opens the real Settings window instead of the empty SwiftUI settings scene.
+- Follow-up GUI evidence: [`docs/test-evidence/17-followup-results.txt`](docs/test-evidence/17-followup-results.txt).
+
 ## Scope completed
 
 - Removed 13 of the 17 upstream agent providers and retained exactly Codex, Hermes, OpenCode, and AntiGravity.
