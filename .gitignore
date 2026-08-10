@@ -16,6 +16,7 @@ build/*.dmg
 build/CAESURA-ISLAND.app/
 build/AppIcon.iconset/
 build/AppIcon.icns
+build/AppIcon-1024.png
 build/rw.*.dmg
 
 # Design intermediates
