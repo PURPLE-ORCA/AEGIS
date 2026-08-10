@@ -55,6 +55,86 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
         wait(for: [received], timeout: 3)
     }
 
+    func testReconciliationCatchesCompletionWithoutFileEvent() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transcript = root.appendingPathComponent("rollout-session-3.jsonl")
+        try writeLines([
+            #"{"type":"session_meta","payload":{"id":"session-3","cwd":"/tmp/project"}}"#,
+        ], to: transcript)
+
+        let watcher = CodexDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationInterval: nil
+        )
+        let started = expectation(description: "watcher started")
+        let working = expectation(description: "working event")
+        let completed = expectation(description: "completion event")
+        watcher.onMessage = { message in
+            if message.hookEvent == "UserPromptSubmit" { working.fulfill() }
+            if message.hookEvent == "Stop" { completed.fulfill() }
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started], timeout: 3)
+        defer { watcher.stop() }
+
+        try appendLine(
+            #"{"type":"event_msg","payload":{"type":"task_started"}}"#,
+            to: transcript
+        )
+        watcher.reconcileNow()
+        wait(for: [working], timeout: 3)
+
+        try appendLine(
+            #"{"type":"event_msg","payload":{"type":"task_complete","last_agent_message":"done"}}"#,
+            to: transcript
+        )
+        watcher.reconcileNow()
+        wait(for: [completed], timeout: 3)
+    }
+
+    func testNewTurnClearsPriorAssistantFallback() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transcript = root.appendingPathComponent("rollout-session-4.jsonl")
+        try writeLines([
+            #"{"type":"session_meta","payload":{"id":"session-4","cwd":"/tmp/project"}}"#,
+        ], to: transcript)
+
+        let watcher = CodexDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationInterval: nil
+        )
+        let started = expectation(description: "watcher started")
+        let completed = expectation(description: "two completions")
+        completed.expectedFulfillmentCount = 2
+        var completionMessages: [String?] = []
+        watcher.onMessage = { message in
+            guard message.hookEvent == "Stop" else { return }
+            completionMessages.append(message.assistantMessage)
+            completed.fulfill()
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started], timeout: 3)
+        defer { watcher.stop() }
+
+        try appendLines([
+            #"{"type":"event_msg","payload":{"type":"task_started"}}"#,
+            #"{"type":"event_msg","payload":{"type":"agent_message","message":"old answer"}}"#,
+            #"{"type":"event_msg","payload":{"type":"task_complete"}}"#,
+            #"{"type":"event_msg","payload":{"type":"task_started"}}"#,
+            #"{"type":"event_msg","payload":{"type":"turn_aborted"}}"#,
+        ], to: transcript)
+        watcher.reconcileNow()
+
+        wait(for: [completed], timeout: 3)
+        XCTAssertEqual(completionMessages.count, 2)
+        XCTAssertEqual(completionMessages[0], "old answer")
+        XCTAssertNil(completionMessages[1])
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("caesura-codex-tests-\(UUID().uuidString)", isDirectory: true)
@@ -67,9 +147,13 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
     }
 
     private func appendLine(_ line: String, to url: URL) throws {
+        try appendLines([line], to: url)
+    }
+
+    private func appendLines(_ lines: [String], to url: URL) throws {
         let handle = try FileHandle(forWritingTo: url)
         try handle.seekToEnd()
-        try handle.write(contentsOf: Data((line + "\n").utf8))
+        try handle.write(contentsOf: Data((lines.joined(separator: "\n") + "\n").utf8))
         try handle.close()
     }
 }

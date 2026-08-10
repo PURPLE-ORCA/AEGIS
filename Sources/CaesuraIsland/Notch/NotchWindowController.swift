@@ -42,7 +42,10 @@ final class NotchWindowController: NSWindowController {
         let hostingView = ClickThroughHostingView(rootView: contentView)
         panel.contentView = hostingView
 
-        // Force the window to the front and make it visible
+        // Ordering once is required before applying the custom window level.
+        // Keep it transparent until presence policy decides whether this
+        // launch actually has anything worth showing.
+        panel.alphaValue = 0
         panel.orderFrontRegardless()
         panel.isReleasedWhenClosed = false
 
@@ -62,6 +65,16 @@ final class NotchWindowController: NSWindowController {
             }
             .store(in: &cancellables)
 
+        // The notch is ambient status UI, not an always-on launcher. Keep the
+        // panel entirely off-screen when there is no running/actionable work,
+        // while still allowing transient results and decisions to surface.
+        Publishers.CombineLatest(sessionStore.$sessions, viewModel.$state)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _, state in
+                self?.reconcileWindowPresence(state: state)
+            }
+            .store(in: &cancellables)
+
         // Reposition when dynamic content height changes (e.g. expand button)
         Publishers.CombineLatest(viewModel.$dynamicPermissionHeight, viewModel.$dynamicFinishedHeight)
             .dropFirst()
@@ -70,6 +83,9 @@ final class NotchWindowController: NSWindowController {
                 self?.repositionWindow()
             }
             .store(in: &cancellables)
+
+        reconcileWindowPresence(state: viewModel.state)
+        panel.alphaValue = 1
 
         // Watch for display changes
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
@@ -145,6 +161,33 @@ final class NotchWindowController: NSWindowController {
     private var animationStartSize: NSSize = .zero
     private var animationDeltaW: CGFloat = 0
     private var animationDeltaH: CGFloat = 0
+
+    private func reconcileWindowPresence(state: NotchState) {
+        guard let panel = window else { return }
+        let activeSessionCount = sessionStore.activeSessions.count
+
+        if NotchPresencePolicy.shouldCollapse(
+            state: state,
+            activeSessionCount: activeSessionCount
+        ) {
+            viewModel.collapse()
+            return
+        }
+
+        if NotchPresencePolicy.shouldShow(
+            state: state,
+            activeSessionCount: activeSessionCount
+        ) {
+            if !panel.isVisible {
+                panel.orderFrontRegardless()
+                (panel as? NotchPanel)?.applyNotchLevel()
+            }
+        } else {
+            animationDisplayLink?.invalidate()
+            animationDisplayLink = nil
+            panel.orderOut(nil)
+        }
+    }
 
     private func repositionWindow() {
         guard let panel = window else { return }
@@ -270,6 +313,23 @@ enum DecisionPresentationPolicy {
             return false
         case .expanded, .finished:
             return true
+        }
+    }
+}
+
+enum NotchPresencePolicy {
+    static func shouldCollapse(state: NotchState, activeSessionCount: Int) -> Bool {
+        guard activeSessionCount == 0 else { return false }
+        if case .expanded = state { return true }
+        return false
+    }
+
+    static func shouldShow(state: NotchState, activeSessionCount: Int) -> Bool {
+        switch state {
+        case .finished, .permission, .question:
+            return true
+        case .collapsed, .expanded:
+            return activeSessionCount > 0
         }
     }
 }

@@ -145,7 +145,14 @@ final class SessionStore: ObservableObject {
     }
 
     var activeSessions: [String: Session] {
-        sessions.filter { $0.value.status != .completed }
+        sessions.filter { _, session in
+            switch session.status {
+            case .thinking, .toolUse, .waitingPermission, .error:
+                return true
+            case .idle, .completed:
+                return false
+            }
+        }
     }
 
     private func ensureSession(_ message: BridgeMessage) {

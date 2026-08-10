@@ -13,30 +13,43 @@ final class CodexDesktopSessionWatcher {
     }
 
     private let root: URL
+    private let automaticallyMonitorsChanges: Bool
+    private let reconciliationInterval: TimeInterval?
     private let queue = DispatchQueue(label: "dev.caesura.island.codex-desktop", qos: .utility)
     private var monitor: FileEventMonitor?
+    private var reconciliationTimer: DispatchSourceTimer?
+    private var reconciliationTick = 0
     private var offsets: [String: UInt64] = [:]
     private var buffers: [String: Data] = [:]
     private var states: [String: SessionState] = [:]
 
-    init(root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions")) {
+    init(
+        root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions"),
+        automaticallyMonitorsChanges: Bool = true,
+        reconciliationInterval: TimeInterval? = 1
+    ) {
         self.root = root.resolvingSymlinksInPath().standardizedFileURL
+        self.automaticallyMonitorsChanges = automaticallyMonitorsChanges
+        self.reconciliationInterval = reconciliationInterval
     }
 
     func start(completion: (() -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self else { return }
             self.seedExistingFiles()
-            let monitor = FileEventMonitor(
-                root: self.root,
-                label: "dev.caesura.island.codex-desktop.events",
-                recursive: true,
-                includeFile: { $0.pathExtension == "jsonl" }
-            ) { [weak self] paths in
-                self?.queue.async { self?.process(paths: paths) }
+            if self.automaticallyMonitorsChanges {
+                let monitor = FileEventMonitor(
+                    root: self.root,
+                    label: "dev.caesura.island.codex-desktop.events",
+                    recursive: true,
+                    includeFile: { $0.pathExtension == "jsonl" }
+                ) { [weak self] paths in
+                    self?.queue.async { self?.process(paths: paths) }
+                }
+                self.monitor = monitor
+                monitor.start()
             }
-            self.monitor = monitor
-            monitor.start()
+            self.startReconciliationTimer()
             Log.info("Codex Desktop watcher started at \(self.root.path)")
             completion?()
         }
@@ -44,8 +57,20 @@ final class CodexDesktopSessionWatcher {
 
     func stop() {
         queue.sync {
+            reconciliationTimer?.cancel()
+            reconciliationTimer = nil
+            reconciliationTick = 0
             monitor?.stop()
             monitor = nil
+        }
+    }
+
+    /// Reconcile transcript sizes without relying on a filesystem callback.
+    /// Useful for deterministic tests and for callers that need an immediate
+    /// catch-up after an external lifecycle transition.
+    func reconcileNow() {
+        queue.async { [weak self] in
+            self?.reconcileTranscripts(includeAll: true)
         }
     }
 
@@ -73,6 +98,41 @@ final class CodexDesktopSessionWatcher {
             }
         }
         for path in files { readAppendedLines(at: URL(fileURLWithPath: path)) }
+    }
+
+    private func startReconciliationTimer() {
+        guard let reconciliationInterval, reconciliationInterval > 0 else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(
+            deadline: .now() + reconciliationInterval,
+            repeating: reconciliationInterval,
+            leeway: .milliseconds(150)
+        )
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.reconciliationTick += 1
+            // Active transcripts get a one-second safety check so a missed
+            // final append cannot leave a card spinning. Every tenth tick also
+            // stats the full tree to recover a missed turn-start/new-file event.
+            self.reconcileTranscripts(includeAll: self.reconciliationTick % 10 == 0)
+        }
+        reconciliationTimer = timer
+        timer.resume()
+    }
+
+    private func reconcileTranscripts(includeAll: Bool) {
+        var paths: Set<String>
+        if includeAll {
+            paths = Set(offsets.keys)
+            discoverJSONLFiles(at: root, into: &paths)
+        } else {
+            paths = Set(states.compactMap { path, state in
+                state.active || !state.tools.isEmpty ? path : nil
+            })
+        }
+        for path in paths {
+            readAppendedLines(at: URL(fileURLWithPath: path))
+        }
     }
 
     private func discoverJSONLFiles(at url: URL, into files: inout Set<String>) {
@@ -148,6 +208,8 @@ final class CodexDesktopSessionWatcher {
             switch event {
             case "task_started":
                 state.active = true
+                state.lastAssistantMessage = nil
+                state.tools.removeAll()
                 emit(.init(sessionId: sessionId, hookEvent: "UserPromptSubmit", cwd: state.cwd, source: "codex", model: state.model))
             case "user_message":
                 let text = payload["message"] as? String
@@ -156,11 +218,13 @@ final class CodexDesktopSessionWatcher {
                 state.lastAssistantMessage = payload["message"] as? String
             case "task_complete":
                 state.active = false
+                state.tools.removeAll()
                 let message = (payload["last_agent_message"] as? String) ?? state.lastAssistantMessage
                 emit(.init(sessionId: sessionId, hookEvent: "Stop", cwd: state.cwd, assistantMessage: message, durationMs: payload["duration_ms"] as? Int, source: "codex", model: state.model))
             case "turn_aborted":
                 state.active = false
-                emit(.init(sessionId: sessionId, hookEvent: "Stop", cwd: state.cwd, assistantMessage: state.lastAssistantMessage, source: "codex", model: state.model))
+                state.tools.removeAll()
+                emit(.init(sessionId: sessionId, hookEvent: "Stop", cwd: state.cwd, source: "codex", model: state.model))
             default:
                 break
             }

@@ -78,7 +78,9 @@ struct NotchContentView: View {
     }
 
     private func activateCollapsed() {
-        if !showNextPending() { viewModel.expand(holdSeconds: 2.0) }
+        guard !showNextPending() else { return }
+        guard !sessionStore.activeSessions.isEmpty else { return }
+        viewModel.expand(holdSeconds: 2.0)
     }
 
     /// Surface the next queued decision (oldest-first): a permission routes to
