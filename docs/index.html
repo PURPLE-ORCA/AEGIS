@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Code Island — 17 AI coding agents, live in your notch</title>
+  <meta name="description" content="Native macOS app that turns your MacBook's notch into a live dashboard for 17 AI coding agents — Claude Code, Codex, Gemini, Cursor, Copilot, and more. Approve permissions, answer questions, track rate limits — all from the notch." />
+  <link rel="icon" type="image/png" href="assets/logo.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <meta property="og:title" content="Code Island — 17 AI coding agents, live in your notch" />
+  <meta property="og:description" content="The notch dashboard for your AI coding agents — 17 supported. Multi-provider, fully local, free & open source (GPLv3)." />
+  <meta property="og:image" content="assets/logo.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+</head>
+<body>
+  <nav class="nav">
+    <a class="brand" href="#top">
+      <img src="assets/logo.png" alt="" width="28" height="28" />
+      <span>Code Island</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#providers">Providers</a>
+      <a href="#faq">FAQ</a>
+      <a href="#support">Support</a>
+      <a class="ghost" href="https://github.com/rifqiakrm/code-island" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <header class="hero" id="top">
+    <div class="hero-inner">
+      <span class="eyebrow">v1.4.10 · macOS 14+ · Open source</span>
+      <h1>Your AI coding agents,<br/><span class="accent">live in the notch.</span></h1>
+      <p class="subtitle">
+        Monitor sessions, approve permissions, answer questions, and jump back to your terminal —<br/>
+        without ever leaving the notch. <strong>17 AI coding agents</strong> in one place.
+      </p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/rifqiakrm/code-island/releases/latest" target="_blank" rel="noopener">
+          Download for macOS
+        </a>
+        <a class="btn ghost" href="#how">See how it works</a>
+      </div>
+      <div class="providers-row">
+        <img src="mascots/claude.png" alt="Claude Code" title="Claude Code" width="34" height="34" />
+        <img src="mascots/codex.png" alt="Codex" title="Codex" width="34" height="34" />
+        <img src="mascots/gemini.png" alt="Gemini" title="Gemini CLI" width="34" height="34" />
+        <img src="mascots/qwen.png" alt="Qwen" title="Qwen Code" width="34" height="34" />
+        <img src="mascots/qoder.png" alt="Qoder" title="Qoder" width="34" height="34" />
+        <img src="mascots/droid.png" alt="Factory" title="Factory" width="34" height="34" />
+        <img src="mascots/codebuddy.png" alt="CodeBuddy" title="CodeBuddy" width="34" height="34" />
+        <img src="mascots/cursor.png" alt="Cursor" title="Cursor" width="34" height="34" />
+        <img src="mascots/copilot.png" alt="Copilot" title="Copilot" width="34" height="34" />
+        <img src="mascots/kimi.png" alt="Kimi" title="Kimi Code CLI" width="34" height="34" />
+        <img src="mascots/opencode.png" alt="OpenCode" title="OpenCode" width="34" height="34" />
+        <img src="mascots/cline.png" alt="Cline" title="Cline" width="34" height="34" />
+        <img src="mascots/kiro.png" alt="Kiro" title="Kiro" width="34" height="34" />
+        <img src="mascots/pi.png" alt="Pi" title="Pi" width="34" height="34" />
+        <img src="mascots/omp.png" alt="Oh My Pi" title="Oh My Pi" width="34" height="34" />
+        <img src="mascots/antigravity.png" alt="AntiGravity" title="AntiGravity" width="34" height="34" />
+        <img src="mascots/hermes.png" alt="Hermes" title="Hermes" width="34" height="34" />
+      </div>
+    </div>
+
+    <!-- Notch live recreation — cycles through idle + 4 states -->
+    <div class="demo-wrap">
+      <div class="macbook">
+        <div class="notch-shape" data-state="idle">
+
+          <!-- IDLE: small pill with mascot + session count (matches the actual app) -->
+          <div class="idle-content">
+            <svg class="mini-mascot" viewBox="0 0 66 52" aria-hidden="true">
+              <g fill="#5fc8e8">
+                <rect x="0"  y="13" width="6"  height="13"/><rect x="60" y="13" width="6"  height="13"/>
+                <rect x="6"  y="39" width="6" height="13"/><rect x="18" y="39" width="6" height="13"/>
+                <rect x="42" y="39" width="6" height="13"/><rect x="54" y="39" width="6" height="13"/>
+                <rect x="6" y="0" width="54" height="39"/>
+              </g>
+              <g fill="#0a1a22"><rect x="12" y="13" width="6" height="7"/><rect x="48" y="13" width="6" height="7"/></g>
+            </svg>
+            <div class="idle-right">
+              <span class="idle-dot"></span>
+              <span class="idle-count">2</span>
+            </div>
+          </div>
+
+        <div class="state-stack">
+
+          <!-- STATE 1: LIST -->
+          <div class="notch-panel state state-list">
+            <div class="panel-top">
+              <div class="rl">
+                <img src="assets/claude.png" alt="" width="12" height="12" />
+                <span class="rl-label">5h</span><span class="rl-val good">11%</span><span class="rl-sub">1h08m</span>
+                <span class="rl-sep">|</span>
+                <span class="rl-label">7d</span><span class="rl-val good">22%</span>
+              </div>
+              <div class="panel-icons">
+              <svg class="sf-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M3 10a1 1 0 011-1h3l4-3.2v12.4L7 15H4a1 1 0 01-1-1v-4zm12 4.6a3 3 0 000-5.2v5.2zm0-8.4a6.5 6.5 0 010 11.6v-1.8a4.7 4.7 0 000-8v-1.8z"/>
+              </svg>
+              <svg class="sf-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zm0 5.5a2 2 0 110-4 2 2 0 010 4zM10.7 2l-.4 2.1-1.3.5-1.8-1.2-1.8 1.8 1.2 1.8-.5 1.3L4 8.7v2.6l2.1.4.5 1.3-1.2 1.8 1.8 1.8 1.8-1.2 1.3.5.4 2.1h2.6l.4-2.1 1.3-.5 1.8 1.2 1.8-1.8-1.2-1.8.5-1.3 2.1-.4V8.7l-2.1-.4-.5-1.3 1.2-1.8-1.8-1.8-1.8 1.2-1.3-.5-.4-2.1h-2.6z"/>
+              </svg>
+            </div>
+            </div>
+            <div class="filter-chips">
+              <span class="chip active">ALL 2</span>
+              <span class="chip"><span class="dot"></span>CLAUDE 1</span>
+              <span class="chip"><span class="dot codex"></span>CODEX 1</span>
+            </div>
+            <div class="group-header"><span class="group-dot"></span><span>CLAUDE (1)</span><span class="chevron">v</span></div>
+            <div class="card claude-card">
+              <div class="card-head">
+                <svg class="mascot pixel-mascot" viewBox="0 0 66 52" aria-hidden="true">
+                  <g fill="#d97757">
+                    <rect x="0"  y="13" width="6"  height="13"/><rect x="60" y="13" width="6"  height="13"/>
+                    <rect x="6"  y="39" width="6" height="13"/><rect x="18" y="39" width="6" height="13"/>
+                    <rect x="42" y="39" width="6" height="13"/><rect x="54" y="39" width="6" height="13"/>
+                    <rect x="6" y="0" width="54" height="39"/>
+                  </g>
+                  <g fill="#1a0a0a"><rect x="12" y="13" width="6" height="7"/><rect x="48" y="13" width="6" height="7"/></g>
+                </svg>
+                <span class="card-title">Code Island</span>
+                <span class="badge effort">XHIGH</span>
+                <span class="time">&lt;6m</span>
+              </div>
+              <div class="card-body">"oh it works nice, but I just know that codex can do interactive question like claude ya"</div>
+              <div class="card-foot">
+                <span class="tool-pill">✨ Using Bash · 1m 3s</span>
+                <span class="term-pill">⌘ iTerm2</span>
+              </div>
+            </div>
+            <div class="group-header"><span class="group-dot codex"></span><span>CODEX (1)</span><span class="chevron">v</span></div>
+            <div class="card codex-card">
+              <div class="card-head">
+                <svg class="mascot pixel-mascot codex-svg" viewBox="0 0 58 52" aria-hidden="true">
+                  <g fill="#d7d7d7">
+                    <rect x="23" y="0" width="12" height="7"/>
+                    <rect x="6" y="7" width="46" height="7"/>
+                    <rect x="0" y="14" width="58" height="28"/>
+                    <rect x="14" y="42" width="10" height="10"/><rect x="34" y="42" width="10" height="10"/>
+                  </g>
+                  <g fill="#1a1a22">
+                    <rect x="9"  y="19" width="5" height="5"/>
+                    <rect x="14" y="24" width="5" height="5"/>
+                    <rect x="9"  y="29" width="5" height="5"/>
+                    <rect x="32" y="31" width="15" height="4"/>
+                  </g>
+                </svg>
+                <span class="card-title">New project</span>
+                <span class="time">&lt;5m</span>
+              </div>
+              <div class="card-body">"can you create me a python script for odd and even number detection?"</div>
+              <div class="card-foot">
+                <span class="tool-pill thinking">✨ Thinking… · 8s</span>
+                <span class="term-pill">⌘ Terminal</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- STATE 2: PERMISSION -->
+          <div class="notch-panel state state-perm">
+            <div class="panel-top">
+              <div class="rl">
+                <img src="assets/claude.png" alt="" width="12" height="12" />
+                <span class="rl-label">5h</span><span class="rl-val good">11%</span>
+                <span class="rl-sep">|</span>
+                <span class="rl-label">7d</span><span class="rl-val good">22%</span>
+              </div>
+              <div class="panel-icons">
+              <svg class="sf-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M3 10a1 1 0 011-1h3l4-3.2v12.4L7 15H4a1 1 0 01-1-1v-4zm12 4.6a3 3 0 000-5.2v5.2zm0-8.4a6.5 6.5 0 010 11.6v-1.8a4.7 4.7 0 000-8v-1.8z"/>
+              </svg>
+              <svg class="sf-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zm0 5.5a2 2 0 110-4 2 2 0 010 4zM10.7 2l-.4 2.1-1.3.5-1.8-1.2-1.8 1.8 1.2 1.8-.5 1.3L4 8.7v2.6l2.1.4.5 1.3-1.2 1.8 1.8 1.8 1.8-1.2 1.3.5.4 2.1h2.6l.4-2.1 1.3-.5 1.8 1.2 1.8-1.8-1.2-1.8.5-1.3 2.1-.4V8.7l-2.1-.4-.5-1.3 1.2-1.8-1.8-1.8-1.8 1.2-1.3-.5-.4-2.1h-2.6z"/>
+              </svg>
+            </div>
+            </div>
+
+            <div class="perm-head">
+              <svg class="mascot pixel-mascot" viewBox="0 0 66 52" aria-hidden="true">
+                <g fill="#d97757">
+                  <rect x="0"  y="13" width="6"  height="13"/><rect x="60" y="13" width="6"  height="13"/>
+                  <rect x="6"  y="39" width="6" height="13"/><rect x="18" y="39" width="6" height="13"/>
+                  <rect x="42" y="39" width="6" height="13"/><rect x="54" y="39" width="6" height="13"/>
+                  <rect x="6" y="0" width="54" height="39"/>
+                </g>
+                <g fill="#1a0a0a"><rect x="12" y="13" width="6" height="7"/><rect x="48" y="13" width="6" height="7"/></g>
+              </svg>
+              <span class="card-title">api-service</span>
+              <span class="pill-needs">🔒 Needs approval</span>
+            </div>
+
+            <div class="tool-row">
+              <span class="tool-tag bash">▣ Bash</span>
+              <span class="tool-sub">wants to execute a shell command</span>
+            </div>
+
+            <div class="code-preview">
+              <div class="code-header"><span>&lt;/&gt; command</span><span>40 chars</span></div>
+              <pre><code>rm -rf ./dist &amp;&amp; npm run build &amp;&amp; npm test</code></pre>
+            </div>
+
+            <div class="action-row">
+              <button class="action-btn deny">✕ Deny</button>
+              <button class="action-btn allow-once">✓ Allow Once</button>
+              <button class="action-btn allow-all">⊕ Allow All</button>
+              <button class="action-btn auto">⏵⏵ Auto Mode</button>
+            </div>
+          </div>
+
+          <!-- STATE 3: QUESTION -->
+          <div class="notch-panel state state-question">
+            <div class="panel-top">
+              <div class="rl">
+                <img src="assets/claude.png" alt="" width="12" height="12" />
+                <span class="rl-label">5h</span><span class="rl-val good">3%</span><span class="rl-sub">4h19m</span>
+                <span class="rl-sep">|</span>
+                <span class="rl-label">7d</span><span class="rl-val good">23%</span><span class="rl-sub">4d</span>
+              </div>
+              <div class="panel-icons">
+                <svg class="sf-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M3 10a1 1 0 011-1h3l4-3.2v12.4L7 15H4a1 1 0 01-1-1v-4zm12 4.6a3 3 0 000-5.2v5.2zm0-8.4a6.5 6.5 0 010 11.6v-1.8a4.7 4.7 0 000-8v-1.8z"/>
+                </svg>
+                <svg class="sf-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zm0 5.5a2 2 0 110-4 2 2 0 010 4zM10.7 2l-.4 2.1-1.3.5-1.8-1.2-1.8 1.8 1.2 1.8-.5 1.3L4 8.7v2.6l2.1.4.5 1.3-1.2 1.8 1.8 1.8 1.8-1.2 1.3.5.4 2.1h2.6l.4-2.1 1.3-.5 1.8 1.2 1.8-1.8-1.2-1.8.5-1.3 2.1-.4V8.7l-2.1-.4-.5-1.3 1.2-1.8-1.8-1.8-1.8 1.2-1.3-.5-.4-2.1h-2.6z"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="perm-head">
+              <svg class="mascot pixel-mascot" viewBox="0 0 66 52" aria-hidden="true">
+                <g fill="#d97757">
+                  <rect x="0"  y="13" width="6"  height="13"/><rect x="60" y="13" width="6"  height="13"/>
+                  <rect x="6"  y="39" width="6" height="13"/><rect x="18" y="39" width="6" height="13"/>
+                  <rect x="42" y="39" width="6" height="13"/><rect x="54" y="39" width="6" height="13"/>
+                  <rect x="6" y="0" width="54" height="39"/>
+                </g>
+                <g fill="#1a0a0a"><rect x="12" y="13" width="6" height="7"/><rect x="48" y="13" width="6" height="7"/></g>
+              </svg>
+              <span class="card-title">Code Island</span>
+              <span class="pill-waiting">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 3a1 1 0 011-1h6a1 1 0 011 1v5a1 1 0 01-1 1H6l-3 2.5V3z"/><path d="M5.5 5h2.5a1 1 0 011 1v3.5a1 1 0 01-1 1H7l-1.5 1V5z" opacity="0.6"/></svg>
+                Waiting for answer
+              </span>
+            </div>
+
+            <!-- Question 1 -->
+            <div class="q-text">What should I theme the live question demo on the site after?</div>
+            <div class="q-counter">1 / 2 · single select</div>
+            <div class="q-pills">
+              <button class="q-pill">API style</button>
+              <button class="q-pill selected">Framework pick</button>
+              <button class="q-pill">Coffee or Tea</button>
+            </div>
+            <div class="q-divider"><span>or type your own</span></div>
+            <div class="q-input"><span class="prompt-chevron">›</span><span class="placeholder">Type a custom answer...</span></div>
+
+            <!-- Question 2 -->
+            <div class="q-text">How many session cards should fit in the List view demo?</div>
+            <div class="q-counter">2 / 2 · single select</div>
+            <div class="q-pills">
+              <button class="q-pill selected">Two (current)</button>
+              <button class="q-pill">Three</button>
+            </div>
+            <div class="q-divider"><span>or type your own</span></div>
+            <div class="q-input"><span class="prompt-chevron">›</span><span class="placeholder">Type a custom answer...</span></div>
+
+            <div class="q-footer">
+              <button class="action-btn ghost-btn">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="width:11px;height:11px;display:inline;vertical-align:-1px;margin-right:4px"><path d="M2 3h12v10H2V3zm2 2v6h8V5H4zm1 1l2 2-2 2V6zm3 3h4v1H8V9z"/></svg>
+                Answer in terminal
+              </button>
+              <button class="action-btn submit">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="width:12px;height:12px;display:inline;vertical-align:-2px;margin-right:6px"><path d="M14.5 1.5L7 9 1.5 7l13-5.5zM7.5 10l1 4 6-12.5L7.5 10z"/></svg>
+                Submit Answer
+              </button>
+            </div>
+          </div>
+
+          <!-- STATE 4: FINISHED -->
+          <div class="notch-panel state state-finished">
+            <div class="panel-top">
+              <div class="rl">
+                <img src="assets/claude.png" alt="" width="12" height="12" />
+                <span class="rl-label">5h</span><span class="rl-val good">12%</span>
+                <span class="rl-sep">|</span>
+                <span class="rl-label">7d</span><span class="rl-val good">23%</span>
+              </div>
+              <div class="panel-icons">
+              <svg class="sf-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M3 10a1 1 0 011-1h3l4-3.2v12.4L7 15H4a1 1 0 01-1-1v-4zm12 4.6a3 3 0 000-5.2v5.2zm0-8.4a6.5 6.5 0 010 11.6v-1.8a4.7 4.7 0 000-8v-1.8z"/>
+              </svg>
+              <svg class="sf-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zm0 5.5a2 2 0 110-4 2 2 0 010 4zM10.7 2l-.4 2.1-1.3.5-1.8-1.2-1.8 1.8 1.2 1.8-.5 1.3L4 8.7v2.6l2.1.4.5 1.3-1.2 1.8 1.8 1.8 1.8-1.2 1.3.5.4 2.1h2.6l.4-2.1 1.3-.5 1.8 1.2 1.8-1.8-1.2-1.8.5-1.3 2.1-.4V8.7l-2.1-.4-.5-1.3 1.2-1.8-1.8-1.8-1.8 1.2-1.3-.5-.4-2.1h-2.6z"/>
+              </svg>
+            </div>
+            </div>
+
+            <div class="perm-head">
+              <svg class="mascot pixel-mascot" viewBox="0 0 66 52" aria-hidden="true">
+                <g fill="#5fd877">
+                  <rect x="0"  y="13" width="6"  height="13"/><rect x="60" y="13" width="6"  height="13"/>
+                  <rect x="6"  y="39" width="6" height="13"/><rect x="18" y="39" width="6" height="13"/>
+                  <rect x="42" y="39" width="6" height="13"/><rect x="54" y="39" width="6" height="13"/>
+                  <rect x="6" y="0" width="54" height="39"/>
+                </g>
+                <g fill="#0a1a0a"><rect x="12" y="13" width="6" height="7"/><rect x="48" y="13" width="6" height="7"/></g>
+              </svg>
+              <span class="card-title">deploy-script</span>
+              <span class="pill-needs done">✓ Finished in 3.2s</span>
+            </div>
+
+            <div class="tool-row">
+              <span class="tool-tag done">✨ Done</span>
+              <span class="tool-sub">replied to your message</span>
+            </div>
+
+            <div class="user-row">
+              <span class="user-label">you</span>
+              <span class="user-msg">"deploy to staging"</span>
+            </div>
+
+            <div class="reply">
+              <div class="reply-header"><span>↳ reply</span><span>2 lines · 0.2kB</span></div>
+              <p>Deployed to staging cluster. Build finished in 47s, 12 files changed, smoke tests passed. Live at <code>staging.api.dev</code>.</p>
+            </div>
+
+            <div class="action-row single">
+              <button class="action-btn done">✓ Dismiss</button>
+            </div>
+          </div>
+
+          <!-- STATE: PLAN (Claude ExitPlanMode) -->
+          <div class="notch-panel state state-plan">
+            <div class="panel-top">
+              <div class="rl">
+                <img src="assets/claude.png" alt="" width="12" height="12" />
+                <span class="rl-label">5h</span><span class="rl-val good">8%</span>
+                <span class="rl-sep">|</span>
+                <span class="rl-label">7d</span><span class="rl-val good">39%</span>
+              </div>
+              <div class="panel-icons">
+                <svg class="sf-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M3 10a1 1 0 011-1h3l4-3.2v12.4L7 15H4a1 1 0 01-1-1v-4zm12 4.6a3 3 0 000-5.2v5.2zm0-8.4a6.5 6.5 0 010 11.6v-1.8a4.7 4.7 0 000-8v-1.8z"/>
+                </svg>
+                <svg class="sf-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zm0 5.5a2 2 0 110-4 2 2 0 010 4zM10.7 2l-.4 2.1-1.3.5-1.8-1.2-1.8 1.8 1.2 1.8-.5 1.3L4 8.7v2.6l2.1.4.5 1.3-1.2 1.8 1.8 1.8 1.8-1.2 1.3.5.4 2.1h2.6l.4-2.1 1.3-.5 1.8 1.2 1.8-1.8-1.2-1.8.5-1.3 2.1-.4V8.7l-2.1-.4-.5-1.3 1.2-1.8-1.8-1.8-1.8 1.2-1.3-.5-.4-2.1h-2.6z"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="perm-head">
+              <svg class="mascot pixel-mascot" viewBox="0 0 66 52" aria-hidden="true">
+                <g fill="#d97757">
+                  <rect x="0"  y="13" width="6"  height="13"/><rect x="60" y="13" width="6"  height="13"/>
+                  <rect x="6"  y="39" width="6" height="13"/><rect x="18" y="39" width="6" height="13"/>
+                  <rect x="42" y="39" width="6" height="13"/><rect x="54" y="39" width="6" height="13"/>
+                  <rect x="6" y="0" width="54" height="39"/>
+                </g>
+                <g fill="#1a0a0a"><rect x="12" y="13" width="6" height="7"/><rect x="48" y="13" width="6" height="7"/></g>
+              </svg>
+              <span class="card-title">memory-backup</span>
+              <span class="pill-needs plan">≣ Plan ready</span>
+            </div>
+
+            <div class="plan-md">
+              <div class="plan-md-head"><span>&lt;/&gt; plan</span><span>~/.claude/plans/…torvalds.md</span></div>
+              <div class="plan-md-body">
+                <h4>Plan: <code>memory_backup.py</code> — snapshot the memory store</h4>
+                <p class="md-h">Context</p>
+                <p>Auto-memory is mutated in place every session — no history. This adds timestamped, compressed snapshots so the store is always recoverable.</p>
+                <p class="md-h">Behavior</p>
+                <ul>
+                  <li>Write <code>memory-YYYYMMDD.tar.gz</code> of the store</li>
+                  <li>Prune all but the newest <code>--keep</code></li>
+                  <li><code>--dry-run</code> reports without writing</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="action-row plan-approve">
+              <button class="action-btn auto">⏵⏵ Approve &amp; auto mode</button>
+              <button class="action-btn allow-all">✎ Approve &amp; manual edits</button>
+            </div>
+            <div class="plan-foot">
+              <button class="action-btn ghost-btn">
+                <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="width:11px;height:11px;display:inline;vertical-align:-1px;margin-right:4px"><path d="M2 3h12v10H2V3zm2 2v6h8V5H4zm1 1l2 2-2 2V6zm3 3h4v1H8V9z"/></svg>
+                Answer in terminal
+              </button>
+              <button class="action-btn keep">↩ Keep planning</button>
+            </div>
+          </div>
+
+          <!-- STATE 5: THEMES -->
+          <div class="notch-panel state state-themes">
+            <div class="themes-top">
+              <span class="themes-label">⚙ Appearance</span>
+              <span class="theme-name">Default</span>
+            </div>
+            <div class="t-card">
+              <div class="card-head">
+                <svg class="mascot pixel-mascot" viewBox="0 0 66 52" aria-hidden="true">
+                  <g fill="#d97757">
+                    <rect x="0"  y="13" width="6"  height="13"/><rect x="60" y="13" width="6"  height="13"/>
+                    <rect x="6"  y="39" width="6" height="13"/><rect x="18" y="39" width="6" height="13"/>
+                    <rect x="42" y="39" width="6" height="13"/><rect x="54" y="39" width="6" height="13"/>
+                    <rect x="6" y="0" width="54" height="39"/>
+                  </g>
+                  <g fill="#1a0a0a"><rect x="12" y="13" width="6" height="7"/><rect x="48" y="13" width="6" height="7"/></g>
+                </svg>
+                <span class="card-title">Code Island</span>
+                <span class="t-time">&lt;6m</span>
+              </div>
+              <div class="t-body">"five looks for the notch — same brains, your vibe."</div>
+              <div class="t-pills">
+                <span class="t-pill t-thinking">✨ Thinking…</span>
+                <span class="t-pill t-term">⌘ iTerm2</span>
+              </div>
+            </div>
+            <div class="t-actions">
+              <button class="t-btn t-deny">✕ Deny</button>
+              <button class="t-btn t-allow">✓ Allow Once</button>
+            </div>
+            <div class="theme-dots">
+              <span class="tdot" data-i="0"></span><span class="tdot" data-i="1"></span>
+              <span class="tdot" data-i="2"></span><span class="tdot" data-i="3"></span>
+              <span class="tdot" data-i="4"></span><span class="tdot" data-i="5"></span>
+            </div>
+          </div>
+
+          <!-- STATE 6: MASCOTS -->
+          <div class="notch-panel state state-mascots">
+            <div class="mascots-head">
+              <span class="mascots-title">17 agents · 17 mascots</span>
+              <span class="mascots-sub">one notch, every CLI</span>
+            </div>
+            <div class="mascot-grid">
+              <figure><img src="mascots/claude.png" alt="Claude"/><figcaption>Claude</figcaption></figure>
+              <figure><img src="mascots/codex.png" alt="Codex"/><figcaption>Codex</figcaption></figure>
+              <figure><img src="mascots/gemini.png" alt="Gemini"/><figcaption>Gemini</figcaption></figure>
+              <figure><img src="mascots/qwen.png" alt="Qwen"/><figcaption>Qwen</figcaption></figure>
+              <figure><img src="mascots/qoder.png" alt="Qoder"/><figcaption>Qoder</figcaption></figure>
+              <figure><img src="mascots/droid.png" alt="Factory"/><figcaption>Factory</figcaption></figure>
+              <figure><img src="mascots/codebuddy.png" alt="CodeBuddy"/><figcaption>CodeBuddy</figcaption></figure>
+              <figure><img src="mascots/cursor.png" alt="Cursor"/><figcaption>Cursor</figcaption></figure>
+              <figure><img src="mascots/copilot.png" alt="Copilot"/><figcaption>Copilot</figcaption></figure>
+              <figure><img src="mascots/kimi.png" alt="Kimi"/><figcaption>Kimi</figcaption></figure>
+              <figure><img src="mascots/opencode.png" alt="OpenCode"/><figcaption>OpenCode</figcaption></figure>
+              <figure><img src="mascots/cline.png" alt="Cline"/><figcaption>Cline</figcaption></figure>
+              <figure><img src="mascots/kiro.png" alt="Kiro"/><figcaption>Kiro</figcaption></figure>
+              <figure><img src="mascots/pi.png" alt="Pi"/><figcaption>Pi</figcaption></figure>
+              <figure><img src="mascots/omp.png" alt="Oh My Pi"/><figcaption>Oh My Pi</figcaption></figure>
+              <figure><img src="mascots/antigravity.png" alt="AntiGravity"/><figcaption>AntiGravity</figcaption></figure>
+              <figure><img src="mascots/hermes.png" alt="Hermes"/><figcaption>Hermes</figcaption></figure>
+            </div>
+          </div>
+
+          <!-- STATE 7: JUMP-TO -->
+          <div class="notch-panel state state-jumpto">
+            <div class="jump-head">
+              <span class="jump-title">⌘ Jump to terminal</span>
+              <span class="jump-sub">click any card → straight to the tab</span>
+            </div>
+            <div class="jump-card">
+              <div class="card-head">
+                <svg class="mascot pixel-mascot codex-svg" viewBox="0 0 58 52" aria-hidden="true">
+                  <g fill="#d7d7d7">
+                    <rect x="23" y="0" width="12" height="7"/><rect x="6" y="7" width="46" height="7"/>
+                    <rect x="0" y="14" width="58" height="28"/>
+                    <rect x="14" y="42" width="10" height="10"/><rect x="34" y="42" width="10" height="10"/>
+                  </g>
+                  <g fill="#1a1a22"><rect x="9" y="19" width="5" height="5"/><rect x="14" y="24" width="5" height="5"/><rect x="9" y="29" width="5" height="5"/><rect x="32" y="31" width="15" height="4"/></g>
+                </svg>
+                <span class="card-title">api-service</span>
+                <span class="t-time">⌘ iTerm2</span>
+              </div>
+              <div class="t-body">"run the test suite and show failures"</div>
+              <span class="jump-cursor">▼</span>
+            </div>
+            <div class="term-window">
+              <div class="term-bar"><span class="td r"></span><span class="td y"></span><span class="td g"></span><span class="term-tab">iTerm2 — api-service</span></div>
+              <div class="term-body"><span class="tl">$ npm test</span><span class="tl dim">PASS  12 suites · 0 failing</span><span class="tl cur">$ ▏</span></div>
+            </div>
+          </div>
+
+          <!-- STATE 8: SOUND -->
+          <div class="notch-panel state state-sound">
+            <div class="sound-head">
+              <svg class="spk" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 10a1 1 0 011-1h3l4-3.2v12.4L7 15H4a1 1 0 01-1-1v-4zm12 4.6a3 3 0 000-5.2v5.2zm0-8.4a6.5 6.5 0 010 11.6v-1.8a4.7 4.7 0 000-8v-1.8z"/></svg>
+              <span class="sound-title">Sound packs</span>
+              <span class="sound-sub">8-bit chirps for every event</span>
+            </div>
+            <ul class="sound-list">
+              <li><span class="snd-name">Session start</span><span class="wave"><i></i><i></i><i></i><i></i><i></i></span><span class="snd-toggle on"></span></li>
+              <li><span class="snd-name">Completion</span><span class="wave"><i></i><i></i><i></i><i></i><i></i></span><span class="snd-toggle on"></span></li>
+              <li><span class="snd-name">Approval needed</span><span class="wave"><i></i><i></i><i></i><i></i><i></i></span><span class="snd-toggle on"></span></li>
+              <li><span class="snd-name">Error</span><span class="wave"><i></i><i></i><i></i><i></i><i></i></span><span class="snd-toggle on"></span></li>
+              <li class="muted"><span class="snd-name">Tool use</span><span class="wave"><i></i><i></i><i></i><i></i><i></i></span><span class="snd-toggle"></span></li>
+            </ul>
+            <div class="sound-foot">Import your own sounds in Settings → Sound</div>
+          </div>
+
+        </div>
+        </div>
+      </div>
+      <p class="demo-caption">A live recreation — list, permission, question, finished, themes, mascots, jump-to, sound. <span class="state-label">Idle</span></p>
+    </div>
+  </header>
+
+  <!-- FEATURES -->
+  <section class="features" id="features">
+    <div class="container">
+      <span class="section-eyebrow reveal">FEATURES</span>
+      <h2 class="reveal">Every agent. One glance.</h2>
+      <p class="lead reveal">Code Island surfaces the things you actually want to interrupt for — and only those.</p>
+
+      <div class="grid reveal reveal-stagger">
+        <article class="feature">
+          <div class="ico">◉</div>
+          <h3>17 agents, side by side</h3>
+          <p>From Claude &amp; Codex to Gemini, Cursor, Copilot, Kiro, Pi and a dozen more — 17 agents. Filter chips, collapsible per-provider groups, jump between them instantly.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">✓</div>
+          <h3>Permission UI</h3>
+          <p>Approve or deny without leaving your editor — buttons adapt per agent. Claude gets Allow All + <code>⏵⏵ Auto Mode</code>; Codex gets a broad <code>prefix_rule</code> bypass; others show only what their hooks support, or hand off to the tool.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">▤</div>
+          <h3>Plan review</h3>
+          <p>Claude's plan mode renders the plan as formatted <strong>markdown</strong> in the notch — not raw JSON. Approve into <code>⏵⏵ auto mode</code>, approve &amp; review edits manually, keep planning, or answer in terminal.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">?</div>
+          <h3>Question UI</h3>
+          <p>Claude's <code>AskUserQuestion</code> answers inline with pill buttons. Codex's <code>request_user_input</code> mirrors in the notch with click-to-jump.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">%</div>
+          <h3>Live rate limits</h3>
+          <p>Per-provider 5h and 7d windows. Color-coded warnings (green / yellow / orange / red). Tap to cycle between providers.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">★</div>
+          <h3>Finished reveal</h3>
+          <p>When an agent finishes a task, the notch pops out with the response inline and a Done button. Auto-collapses after 3s.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">⤢</div>
+          <h3>Terminal jump</h3>
+          <p>Click any session card to jump to the terminal or IDE running it. Works with iTerm2, Ghostty, Terminal.app, VS Code, JetBrains, Codex.app, and more.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">♪</div>
+          <h3>Sound packs</h3>
+          <p>8-bit chiptune defaults with a per-event sound picker. Import your own <code>.wav</code> / <code>.mp3</code> via "Add Sound…", assign them per event, and ▶ preview — no file-fiddling.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">▣</div>
+          <h3>Pixel mascots</h3>
+          <p>Every agent gets its own hand-drawn pixel mascot — crab, gem, moon, robot, cat &amp; more — that bounces while thinking and swaps color by status.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">⏻</div>
+          <h3>Smart cleanup</h3>
+          <p>Process-PID sweep removes Claude sessions when the agent exits. For Codex we listen to the app-server's <code>thread/closed</code> events — works for both CLI and Codex.app.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">↻</div>
+          <h3>Auto updates</h3>
+          <p>Weekly silent check against GitHub Releases. Pops an alert only when a newer version ships. Skip a release once and we won't nag again.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">⌗</div>
+          <h3>Zero config</h3>
+          <p>Hooks for every detected provider install automatically on every launch. Idempotent. Run once, forget about it.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">⌂</div>
+          <h3>Fully local</h3>
+          <p>No telemetry. No cloud. Bridge talks to the app over a Unix socket at <code>/tmp/code-island.sock</code>. Your code never leaves your Mac.</p>
+        </article>
+        <article class="feature">
+          <div class="ico">⌘</div>
+          <h3>Native Swift</h3>
+          <p>SwiftUI + AppKit. Lives at window layer 27 (just above the menu bar). No Electron, no web view, no JIT.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="how" id="how">
+    <div class="container">
+      <span class="section-eyebrow reveal">HOW IT WORKS</span>
+      <h2 class="reveal">Hooks in. Decisions out.</h2>
+      <p class="lead reveal">An event-driven loop between the agent, a tiny CLI bridge, and the notch app — all over a local Unix socket.</p>
+
+      <ol class="steps reveal reveal-stagger">
+        <li>
+          <span class="step-num">1</span>
+          <div>
+            <h3>The agent fires a hook</h3>
+            <p>Claude Code or Codex fires <code>SessionStart</code>, <code>PreToolUse</code>, <code>PermissionRequest</code>, <code>Stop</code> — whatever's happening — and pipes JSON to a tiny bridge binary on stdin.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">2</span>
+          <div>
+            <h3>The bridge enriches</h3>
+            <p>The bridge stamps <code>source</code> (claude / codex), captures the agent's PID, walks up the process tree to detect the terminal app, then forwards everything to the app over a Unix socket.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">3</span>
+          <div>
+            <h3>The notch reacts</h3>
+            <p>A permission request? The notch pops out with the tool details and four buttons. A question? Pill buttons with multi-select. A Stop event? The agent's reply scrolls inline with auto-collapse.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">4</span>
+          <div>
+            <h3>Your answer flows back</h3>
+            <p>The socket stays open until you click. Your decision serializes to JSON, lands on the bridge's stdout, and the agent continues — all in under a second.</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- PROVIDER MATRIX -->
+  <section class="providers-section" id="providers">
+    <div class="container">
+      <span class="section-eyebrow reveal">PROVIDERS</span>
+      <h2 class="reveal">Pick your agent. Or all seventeen.</h2>
+      <p class="lead reveal">Code Island treats every provider as a first-class citizen — its own mascot, palette, and quirks. Claude and Codex go deepest; here's the full lineup.</p>
+
+      <div class="provider-cards reveal reveal-stagger">
+        <div class="prov-card">
+          <div class="prov-head">
+            <img src="assets/claude.png" alt="" width="40" height="40" />
+            <div>
+              <h3>Claude Code</h3>
+              <p>Anthropic's terminal coding agent</p>
+            </div>
+          </div>
+          <ul class="prov-features">
+            <li><span class="check">✓</span> Session tracking & status</li>
+            <li><span class="check">✓</span> Permission request UI (4 buttons)</li>
+            <li><span class="check">✓</span> AskUserQuestion → pill buttons inline</li>
+            <li><span class="check">✓</span> Bypass via <code>dontAsk</code> mode</li>
+            <li><span class="check">✓</span> Allow-all via <code>updatedPermissions</code></li>
+            <li><span class="check">✓</span> 5h / 7d rate limits (OAuth)</li>
+            <li><span class="check">✓</span> Pixel crab mascot</li>
+          </ul>
+        </div>
+
+        <div class="prov-card">
+          <div class="prov-head">
+            <img src="assets/codex.png" alt="" width="40" height="40" />
+            <div>
+              <h3>Codex</h3>
+              <p>OpenAI's terminal + GUI agent</p>
+            </div>
+          </div>
+          <ul class="prov-features">
+            <li><span class="check">✓</span> Session tracking & status</li>
+            <li><span class="check">✓</span> Permission request UI (4 buttons)</li>
+            <li><span class="check">✓</span> request_user_input mirror + jump</li>
+            <li><span class="check">✓</span> Allow-all via <code>prefix_rule</code> TOML</li>
+            <li><span class="check">✓</span> Works with CLI <em>and</em> Codex.app</li>
+            <li><span class="check">✓</span> 5h / 7d rate limits (ChatGPT auth)</li>
+            <li><span class="check">✓</span> Pixel terminal-box mascot</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="lead reveal" style="margin-top:52px;">…and fifteen more — each with its own animated mascot, accent, and hooks:</p>
+      <div class="reveal" style="display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-top:18px;">
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/gemini.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Gemini CLI</div><div style="font-size:12px;color:var(--muted);">Google · terminal</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/qwen.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Qwen Code</div><div style="font-size:12px;color:var(--muted);">Alibaba · permission UI</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/qoder.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Qoder</div><div style="font-size:12px;color:var(--muted);">Claude fork · permission UI</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/droid.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Factory</div><div style="font-size:12px;color:var(--muted);">the <code>droid</code> CLI</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/codebuddy.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">CodeBuddy</div><div style="font-size:12px;color:var(--muted);">Tencent · CLI</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/cursor.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Cursor</div><div style="font-size:12px;color:var(--muted);">the AI editor</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/copilot.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Copilot</div><div style="font-size:12px;color:var(--muted);">GitHub Copilot CLI</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/kimi.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Kimi Code CLI</div><div style="font-size:12px;color:var(--muted);">Moonshot AI</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/opencode.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">OpenCode</div><div style="font-size:12px;color:var(--muted);">open source · permission UI</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/cline.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Cline</div><div style="font-size:12px;color:var(--muted);">VS Code extension</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/kiro.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Kiro</div><div style="font-size:12px;color:var(--muted);">agentic IDE</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/pi.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Pi</div><div style="font-size:12px;color:var(--muted);">extension · permission UI</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/omp.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Oh My Pi</div><div style="font-size:12px;color:var(--muted);">Pi variant</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/antigravity.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">AntiGravity</div><div style="font-size:12px;color:var(--muted);">Google · IDE</div></div>
+        </div>
+        <div class="agent-chip" style="display:flex;align-items:center;gap:11px;padding:13px 17px;border:1px solid var(--border);border-radius:15px;background:var(--bg-soft);min-width:210px;">
+          <img src="mascots/hermes.png" width="38" height="38" alt="" />
+          <div><div style="font-weight:600;">Hermes</div><div style="font-size:12px;color:var(--muted);">Nous Research</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- INSTALL -->
+  <section class="install" id="install">
+    <div class="container">
+      <span class="section-eyebrow reveal">INSTALL</span>
+      <h2 class="reveal">One DMG. Hooks auto-wire.</h2>
+      <p class="lead reveal">No config files. No env vars. Drop it in <code>/Applications</code> and start coding.</p>
+
+      <div class="install-box">
+        <a class="btn primary big" href="https://github.com/rifqiakrm/code-island/releases/latest" target="_blank" rel="noopener">
+          ↓ Download latest DMG
+        </a>
+        <div class="install-meta">
+          <p><strong>Requires</strong> macOS 14 Sonoma or later</p>
+          <p><strong>Free &amp; open source</strong> under GPLv3 · <a href="https://github.com/rifqiakrm/code-island/blob/main/LICENSE">LICENSE</a></p>
+        </div>
+      </div>
+
+      <details class="code-block">
+        <summary>Unsigned build? Clear Gatekeeper quarantine first</summary>
+        <pre><code>xattr -cr "/Applications/Code Island.app"</code></pre>
+      </details>
+
+      <details class="code-block">
+        <summary>Or build from source</summary>
+        <pre><code>git clone https://github.com/rifqiakrm/code-island.git
+cd code-island
+swift build -c release
+./scripts/build-dmg.sh 1.0.0</code></pre>
+      </details>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="faq" id="faq">
+    <div class="container narrow">
+      <span class="section-eyebrow reveal">FAQ</span>
+      <h2 class="reveal">Common questions</h2>
+
+      <details>
+        <summary>Is it really free?</summary>
+        <p>Yes — it's free and open source under the GNU GPLv3. You can use, modify, and redistribute it; the only condition is that any distributed fork or derivative stays open source under GPLv3 too (no closed-source/proprietary forks).</p>
+      </details>
+
+      <details>
+        <summary>Does my code or data leave my Mac?</summary>
+        <p>No. Hook payloads stay on your machine. The bridge talks to the app over a local Unix socket. Rate limit checks hit Anthropic / OpenAI directly using your existing auth tokens — same as your CLI does — so the same TLS connection your agent already uses.</p>
+      </details>
+
+      <details>
+        <summary>Which terminals work?</summary>
+        <p>The bridge walks the process tree to find the GUI app that spawned the agent, so it works with anything that has a bundle ID — iTerm2, Ghostty, Terminal.app, VS Code, Cursor, Windsurf, JetBrains IDEs, Codex.app, and more. iTerm2 gets a tab-specific jump via <code>ITERM_SESSION_ID</code>.</p>
+      </details>
+
+      <details>
+        <summary>How do hooks get installed?</summary>
+        <p>On every launch, Code Island auto-installs hooks for each of the 17 agents it detects — writing each tool's own config (e.g. <code>~/.claude/settings.json</code>, <code>~/.codex/hooks.json</code>, plus the right format for Gemini, Cursor, Kimi, OpenCode, and the rest). It also picks up multiple Claude profiles (<code>~/.claude-work</code>, etc.). Idempotent and non-destructive — foreign hooks are preserved, the original is backed up, and you can delete the app or the hook files and let it rewrite them.</p>
+      </details>
+
+      <details>
+        <summary>What if I don't have a notch?</summary>
+        <p>It still works — on external displays or Macs without a notch, the panel shows as a compact bar at the top center of the screen. Hover to expand, leave to collapse — same UX, no physical notch needed.</p>
+      </details>
+
+      <details>
+        <summary>How does this compare to Vibe Island?</summary>
+        <p>Code Island is heavily inspired by <a href="https://vibeisland.app" target="_blank" rel="noopener">Vibe Island</a> — credit where it's due. Differences: this is open source (GPLv3), free, supports 17 AI coding agents, and is built from scratch in Swift — not a fork.</p>
+      </details>
+
+      <details>
+        <summary>Why so many agents?</summary>
+        <p>Because people mix and match — Claude for fast back-and-forth, Codex or a fork for longer runs, Cursor in the editor, a CLI for something else — and switching windows just to approve a Bash call was the original itch. One unified queue and a shared permission UI across all 17 agents saves dozens of context switches a day. Don't use most of them? Code Island only ever touches the ones it actually detects.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- Scroll reveal -->
+  <script>
+    (function() {
+      const els = document.querySelectorAll('.reveal');
+      if (!('IntersectionObserver' in window)) {
+        els.forEach(el => el.classList.add('in'));
+        return;
+      }
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('in');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+      els.forEach(el => io.observe(el));
+    })();
+  </script>
+
+  <!-- Notch demo state machine: idle ↔ list ↔ idle ↔ perm ↔ ... -->
+  <script>
+    (function() {
+      const shape = document.querySelector('.notch-shape');
+      const label = document.querySelector('.demo-caption .state-label');
+      if (!shape) return;
+
+      // Measure each state's natural content height by briefly making it visible.
+      // Re-measured once webfonts load: prose-heavy panels (the plan view) wrap
+      // differently under the fallback font and would otherwise over-measure,
+      // leaving a black gap below the content (perm/question have no wrapping
+      // prose, so they were never affected).
+      const heights = { idle: 36 };
+      function measureHeights() {
+        ['list', 'perm', 'question', 'plan', 'finished', 'themes', 'mascots', 'jumpto', 'sound'].forEach(s => {
+          const el = shape.querySelector('.state-' + s);
+          if (!el) { heights[s] = 380; return; }
+          const prev = { opacity: el.style.opacity, vis: el.style.visibility, pos: el.style.position };
+          el.style.opacity = '0';
+          el.style.visibility = 'hidden';
+          el.style.position = 'absolute';
+          // offsetHeight reflects the rendered height including padding
+          heights[s] = el.offsetHeight + 4;
+          el.style.opacity = prev.opacity;
+          el.style.visibility = prev.vis;
+          el.style.position = prev.pos;
+        });
+      }
+      measureHeights();
+      if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(() => {
+          measureHeights();
+          if (shape.dataset.state && heights[shape.dataset.state]) {
+            shape.style.height = heights[shape.dataset.state] + 'px';
+          }
+        });
+      }
+
+      const params = new URLSearchParams(location.search);
+      const short = params.has('short');     // ?short → ~20s highlight cut
+      const planad = params.has('planad');   // ?planad → plan-mode-only Apple-style ad
+      const cine = params.has('cine') || planad; // ?cine → Apple-style headlines + cards
+      const themeInterval = short ? 1100 : 1500;
+
+      // Full reel (~40s, all 8 states) vs short highlight cut (~22s, the most
+      // visual features). The recorder reads window.__loopMs so timing flows.
+      const fullSeq = [
+        { state: 'idle',     label: 'Idle',       hold: 1100 },
+        { state: 'list',     label: 'List view',  hold: 3400 },
+        { state: 'idle',     label: 'Idle',       hold: 800  },
+        { state: 'perm',     label: 'Permission', hold: 3400 },
+        { state: 'idle',     label: 'Idle',       hold: 800  },
+        { state: 'question', label: 'Question',   hold: 3400 },
+        { state: 'idle',     label: 'Idle',       hold: 800  },
+        { state: 'plan',     label: 'Plan mode',  hold: 4600 },
+        { state: 'idle',     label: 'Idle',       hold: 800  },
+        { state: 'finished', label: 'Finished',   hold: 3400 },
+        { state: 'idle',     label: 'Idle',       hold: 800  },
+        { state: 'themes',   label: 'Themes',     hold: 7600 },
+        { state: 'idle',     label: 'Idle',       hold: 800  },
+        { state: 'mascots',  label: '17 mascots', hold: 3800 },
+        { state: 'idle',     label: 'Idle',       hold: 800  },
+        { state: 'jumpto',   label: 'Jump-to',    hold: 4200 },
+        { state: 'idle',     label: 'Idle',       hold: 800  },
+        { state: 'sound',    label: 'Sound packs',hold: 3600 },
+      ];
+      const shortSeq = [
+        { state: 'idle',     label: 'Idle',       hold: 700  },
+        { state: 'list',     label: 'List view',  hold: 2800 },
+        { state: 'idle',     label: 'Idle',       hold: 500  },
+        { state: 'perm',     label: 'Permission', hold: 2800 },
+        { state: 'idle',     label: 'Idle',       hold: 500  },
+        { state: 'plan',     label: 'Plan mode',  hold: 3800 },
+        { state: 'idle',     label: 'Idle',       hold: 500  },
+        { state: 'themes',   label: 'Themes',     hold: 5700 },
+        { state: 'idle',     label: 'Idle',       hold: 500  },
+        { state: 'mascots',  label: '17 mascots', hold: 2900 },
+        { state: 'idle',     label: 'Idle',       hold: 500  },
+        { state: 'jumpto',   label: 'Jump-to',    hold: 3200 },
+      ];
+      // Cinematic cut — fewer scenes, longer dwell, a headline per beat, plus
+      // intro/outro title cards. `head` may contain a <span class="cine-sub">.
+      const cineSeq = [
+        { card: 'intro',                                                hold: 3200 },
+        { state: 'list',     head: 'Every session.<br>One glance.',     hold: 3800 },
+        { state: 'perm',     head: 'Approve without<br>leaving flow.',  hold: 3800 },
+        { state: 'plan',     head: 'See the plan,<br>not the JSON.',     hold: 4400 },
+        { state: 'finished', head: 'Know the moment<br>it ships.',      hold: 3400 },
+        { state: 'themes',   head: 'Six looks.<br>Your vibe.',         hold: 7600 },
+        { state: 'mascots',  head: '17 agents.<br>17 mascots.',         hold: 3900 },
+        { state: 'jumpto',   head: 'One click<br>to your terminal.',    hold: 3800 },
+        { state: 'sound',    head: 'A chirp for<br>every beat.',        hold: 3400 },
+        { card: 'outro',                                                hold: 4200 },
+      ];
+      // Plan-mode commercial — plan window is the hero (longer dwell + big
+      // headlines), then a quick montage of the rest of the notch, Apple style.
+      const planAdSeq = [
+        { card: 'planIntro',                                            hold: 2800 },
+        { state: 'plan', head: 'Claude writes<br>a plan.',              hold: 3000 },
+        { state: 'plan', head: 'Read it as markdown —<br>not raw JSON.',hold: 3600 },
+        { state: 'plan', head: 'Approve into<br>⏵⏵ auto mode.',         hold: 3400 },
+        { card: 'more',                                                 hold: 1700 },
+        { state: 'list',    head: 'Every session.',          hold: 1900 },
+        { state: 'perm',    head: 'Approve in a tap.',       hold: 1900 },
+        { state: 'themes',  head: 'Six looks.',             hold: 3000 },
+        { state: 'mascots', head: '17 mascots.',             hold: 2100 },
+        { state: 'jumpto',  head: 'Jump to your terminal.',  hold: 2100 },
+        { state: 'sound',   head: 'A chirp for every beat.', hold: 2000 },
+        { card: 'outro',                                                hold: 4200 },
+      ];
+      const seq = planad ? planAdSeq : (cine ? cineSeq : (short ? shortSeq : fullSeq));
+
+      // Total loop length (sum of holds) — used by the offline recorder.
+      window.__loopMs = seq.reduce((a, s) => a + s.hold, 0);
+
+      // Theme carousel — while the Themes panel is showing, rotate the notch
+      // chrome through all six themes (matches Settings → Appearance).
+      const THEMES = ['default', 'glass', 'pixel', 'terminal', 'brutalist', 'webSlinger'];
+      const themeName = shape.querySelector('.theme-name');
+      const tdots = [...shape.querySelectorAll('.tdot')];
+      let themeTimer = null;
+      function startThemes() {
+        let t = 0;
+        const apply = () => {
+          const name = THEMES[t];
+          shape.dataset.theme = name;
+          if (themeName) themeName.textContent = name === 'webSlinger' ? 'Web-Slinger' : name.charAt(0).toUpperCase() + name.slice(1);
+          tdots.forEach((d, k) => d.style.background = k === t ? 'var(--accent-2)' : 'rgba(255,255,255,0.18)');
+          t = (t + 1) % THEMES.length;
+        };
+        apply();
+        themeTimer = setInterval(apply, themeInterval);
+      }
+      function stopThemes() {
+        if (themeTimer) { clearInterval(themeTimer); themeTimer = null; }
+        delete shape.dataset.theme;
+      }
+
+      // ?record builds a clean full-viewport stage (wallpaper + wordmark) and
+      // moves the live notch into it, so the cycling animation can be captured
+      // as a social video with no page chrome.
+      const recording = params.has('record');
+      let recCap = null, cineHead = null, cineCard = null;
+      if (recording) {
+        document.body.classList.add('record');
+        if (cine) document.body.classList.add('cine');
+        if (params.has('nomark')) document.body.classList.add('nomark');
+        const stage = document.createElement('div');
+        stage.id = 'record-stage';
+        const scale = parseFloat(params.get('scale') || '1.5');
+        shape.style.zoom = scale;
+        stage.appendChild(shape);
+        const mark = document.createElement('div');
+        mark.className = 'rec-wordmark';
+        mark.innerHTML = '<img src="assets/logo.png" alt=""/>' +
+          '<div class="rec-name">Code Island</div>' +
+          '<div class="rec-tag">your notch · 17 AI coding agents</div>';
+        stage.appendChild(mark);
+        recCap = document.createElement('div');
+        recCap.className = 'rec-cap';
+        stage.appendChild(recCap);
+        if (cine) {
+          cineHead = document.createElement('div');
+          cineHead.className = 'cine-headline';
+          stage.appendChild(cineHead);
+          cineCard = document.createElement('div');
+          cineCard.className = 'cine-card';
+          stage.appendChild(cineCard);
+        }
+        document.body.appendChild(stage);
+      }
+
+      const CARDS = {
+        intro: '<img src="assets/logo.png" alt=""/><div class="ct">Code Island</div><div class="cs">your notch, reimagined.</div>',
+        planIntro: '<img src="assets/logo.png" alt=""/><div class="ct">Plan mode</div><div class="cs">review before you run.</div>',
+        more: '<div class="ct">More in<br>your notch.</div>',
+        outro: '<img src="assets/logo.png" alt=""/><div class="ct">Code Island</div><div class="cs">17 AI coding agents · one notch</div><div class="cu">free &amp; open source — github.com/rifqiakrm/code-island</div>',
+      };
+
+      let i = 0;
+      function step() {
+        const cur = seq[i];
+        if (cine && cur.card) {
+          // Title-card beat — fade the notch out, reveal the full-screen card.
+          shape.style.opacity = '0';
+          if (cineHead) cineHead.classList.remove('in');
+          if (cineCard) { cineCard.innerHTML = CARDS[cur.card]; cineCard.classList.add('show'); }
+          if (label) label.textContent = 'Code Island';
+        } else {
+          if (cineCard) cineCard.classList.remove('show');
+          shape.style.opacity = '1';
+          shape.dataset.state = cur.state;
+          shape.style.height = heights[cur.state] + 'px';
+          if (label) label.textContent = cur.label;
+          if (recCap) recCap.innerHTML = cur.state === 'idle' ? '&nbsp;' : '<b>' + cur.label + '</b>';
+          if (cineHead && cur.head) {
+            cineHead.innerHTML = cur.head + (cur.sub ? '<span class="cine-sub">' + cur.sub + '</span>' : '');
+            cineHead.classList.remove('in'); void cineHead.offsetWidth; cineHead.classList.add('in');
+          }
+          if (cur.state === 'themes') startThemes(); else stopThemes();
+        }
+        i = (i + 1) % seq.length;
+        setTimeout(step, cur.hold);
+      }
+      // Fit the fixed-width (≤500px) notch demo into narrow viewports. Uses
+      // `zoom` (not transform) so the LAYOUT box shrinks too — otherwise the
+      // 500px box still overflows and margin:auto left-aligns it off-screen.
+      // Sized off the viewport (not the frame, which the notch would inflate).
+      function fitDemo() {
+        if (recording) return;            // record stage manages its own scale
+        const vw = document.documentElement.clientWidth;
+        const avail = vw - 70;            // page + frame horizontal padding allowance
+        shape.style.zoom = Math.min(1, avail / 500).toFixed(3);
+      }
+      fitDemo();
+      window.addEventListener('resize', fitDemo);
+
+      // Start after a frame so initial heights are measured properly.
+      requestAnimationFrame(step);
+    })();
+  </script>
+
+  <!-- SUPPORT -->
+  <section class="support" id="support" style="padding: 84px 0; text-align: center;">
+    <div class="container">
+      <span class="section-eyebrow">SUPPORT</span>
+      <h2>Free forever. Fueled by ☕</h2>
+      <p class="lead">Code Island is free and open source, built in spare time. If it's earned a spot in your notch and you'd like to support development, it genuinely means a lot — and it's completely optional.</p>
+      <div class="cta" style="justify-content: center;">
+        <a class="btn primary" href="https://ko-fi.com/rifqiakrm" target="_blank" rel="noopener">Support on Ko-fi ☕</a>
+        <a class="btn ghost" href="https://paypal.me/rifqiakrm" target="_blank" rel="noopener">Donate via PayPal</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div class="footer-brand">
+        <img src="assets/logo.png" alt="" width="32" height="32" />
+        <div>
+          <div class="footer-name">Code Island</div>
+          <div class="footer-tag">The notch dashboard for AI agents.</div>
+        </div>
+      </div>
+      <div>
+        <h4>Project</h4>
+        <a href="https://github.com/rifqiakrm/code-island">GitHub</a>
+        <a href="https://github.com/rifqiakrm/code-island/releases">Releases</a>
+        <a href="https://github.com/rifqiakrm/code-island/issues">Issues</a>
+      </div>
+      <div>
+        <h4>Docs</h4>
+        <a href="https://github.com/rifqiakrm/code-island/blob/main/README.md">README</a>
+        <a href="https://github.com/rifqiakrm/code-island/blob/main/CLAUDE.md">Architecture</a>
+        <a href="https://github.com/rifqiakrm/code-island/blob/main/LICENSE">License</a>
+      </div>
+      <div>
+        <h4>Support</h4>
+        <a href="https://ko-fi.com/rifqiakrm" target="_blank" rel="noopener">Ko-fi ☕</a>
+        <a href="https://paypal.me/rifqiakrm" target="_blank" rel="noopener">PayPal</a>
+      </div>
+      <div>
+        <h4>Credits</h4>
+        <a href="https://vibeisland.app" target="_blank" rel="noopener">Inspired by Vibe Island</a>
+        <a href="https://github.com/farouqaldori/vibe-notch" target="_blank" rel="noopener">Crab mascot · Vibe Notch</a>
+      </div>
+    </div>
+    <p class="copy">© 2026 Rifqi Akram · Free &amp; open source under GPLv3.</p>
+  </footer>
+</body>
+</html>
