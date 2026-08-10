@@ -1,144 +1,104 @@
 import AVFoundation
 import Foundation
 
-/// Generates 8-bit style sounds programmatically using square/triangle waves.
+/// Generates short, restrained notification tones from layered sine partials.
+/// Smooth envelopes avoid clicks; low gain leaves headroom when tones overlap.
 struct SoundSynthesizer {
-    private let sampleRate: Double = 44100
-    private let amplitude: Float = 0.3
+    private let sampleRate: Double = 44_100
 
     func generateSound(for event: SoundEvent) -> AVAudioPCMBuffer? {
         switch event {
         case .sessionStart:
-            // Rising arpeggio: C5 → E5 → G5
-            return arpeggio(frequencies: [523.25, 659.25, 783.99], noteDuration: 0.08, waveform: .square)
-
+            return render(duration: 0.30, voices: [
+                Voice(523.25, start: 0.00, duration: 0.24, gain: 0.075, brightness: 0.30),
+                Voice(659.25, start: 0.06, duration: 0.22, gain: 0.055, brightness: 0.25),
+            ])
         case .sessionEnd:
-            // Soft descending: G4 → E4 → C4
-            return arpeggio(frequencies: [392.0, 329.63, 261.63], noteDuration: 0.1, waveform: .triangle)
-
+            return render(duration: 0.28, voices: [
+                Voice(440.00, start: 0.00, duration: 0.25, gain: 0.075, brightness: 0.22),
+            ])
         case .toolUse:
-            // Quick blip
-            return tone(frequency: 880, duration: 0.05, waveform: .square)
-
+            return render(duration: 0.10, voices: [
+                Voice(720.00, start: 0.00, duration: 0.08, gain: 0.035, brightness: 0.15),
+            ])
         case .completion:
-            // Triumphant celebration: C5 → E5 → G5 → C6 (longer, more satisfying)
-            return arpeggio(frequencies: [523.25, 659.25, 783.99, 1046.5], noteDuration: 0.12, waveform: .square)
-
+            return render(duration: 0.46, voices: [
+                Voice(880.00, start: 0.00, duration: 0.34, gain: 0.105, brightness: 0.55),
+                Voice(1108.73, start: 0.075, duration: 0.34, gain: 0.085, brightness: 0.45),
+            ])
         case .error:
-            // Descending buzz: A4 → F4 → D4
-            return arpeggio(frequencies: [440, 349.23, 293.66], noteDuration: 0.1, waveform: .sawtooth)
-
+            return render(duration: 0.32, voices: [
+                Voice(349.23, start: 0.00, duration: 0.24, gain: 0.080, brightness: 0.12),
+                Voice(293.66, start: 0.07, duration: 0.22, gain: 0.065, brightness: 0.10),
+            ])
         case .approvalNeeded:
-            // Question tone: rising two notes
-            return arpeggio(frequencies: [440, 554.37], noteDuration: 0.12, waveform: .square)
-
+            return render(duration: 0.40, voices: [
+                Voice(659.25, start: 0.00, duration: 0.26, gain: 0.080, brightness: 0.28),
+                Voice(880.00, start: 0.11, duration: 0.25, gain: 0.070, brightness: 0.25),
+            ])
         case .approvalGranted:
-            // Happy confirmation: two quick ascending notes
-            return arpeggio(frequencies: [523.25, 783.99], noteDuration: 0.06, waveform: .square)
-
+            return render(duration: 0.28, voices: [
+                Voice(783.99, start: 0.00, duration: 0.18, gain: 0.075, brightness: 0.28),
+                Voice(1046.50, start: 0.045, duration: 0.20, gain: 0.060, brightness: 0.22),
+            ])
         case .approvalDenied:
-            // Low rejection buzz
-            return tone(frequency: 220, duration: 0.15, waveform: .sawtooth)
+            return render(duration: 0.24, voices: [
+                Voice(293.66, start: 0.00, duration: 0.21, gain: 0.075, brightness: 0.10),
+            ])
         }
     }
 
-    // MARK: - Waveform Generation
+    private struct Voice {
+        let frequency: Double
+        let start: Double
+        let duration: Double
+        let gain: Double
+        let brightness: Double
 
-    enum Waveform {
-        case square
-        case triangle
-        case sawtooth
+        init(_ frequency: Double, start: Double, duration: Double, gain: Double, brightness: Double) {
+            self.frequency = frequency
+            self.start = start
+            self.duration = duration
+            self.gain = gain
+            self.brightness = brightness
+        }
     }
 
-    private func tone(frequency: Double, duration: Double, waveform: Waveform) -> AVAudioPCMBuffer? {
+    private func render(duration: Double, voices: [Voice]) -> AVAudioPCMBuffer? {
         let frameCount = AVAudioFrameCount(sampleRate * duration)
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
-            return nil
-        }
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let samples = buffer.floatChannelData?[0] else { return nil }
         buffer.frameLength = frameCount
 
-        guard let floatData = buffer.floatChannelData?[0] else { return nil }
+        for frame in 0..<Int(frameCount) {
+            let time = Double(frame) / sampleRate
+            var mixed = 0.0
 
-        for i in 0..<Int(frameCount) {
-            let t = Double(i) / sampleRate
-            let phase = t * frequency
-            let raw: Float
+            for voice in voices {
+                let localTime = time - voice.start
+                guard localTime >= 0, localTime < voice.duration else { continue }
 
-            switch waveform {
-            case .square:
-                raw = sin(2 * .pi * phase) >= 0 ? 1.0 : -1.0
-            case .triangle:
-                let p = phase.truncatingRemainder(dividingBy: 1.0)
-                raw = Float(4 * abs(p - 0.5) - 1.0)
-            case .sawtooth:
-                let p = phase.truncatingRemainder(dividingBy: 1.0)
-                raw = Float(2 * p - 1.0)
+                let fundamental = sin(2 * .pi * voice.frequency * localTime)
+                let second = sin(2 * .pi * voice.frequency * 2.01 * localTime) * voice.brightness * 0.24
+                let fourth = sin(2 * .pi * voice.frequency * 3.98 * localTime) * voice.brightness * 0.08
+                let normalization = 1 + voice.brightness * 0.32
+                mixed += ((fundamental + second + fourth) / normalization)
+                    * voice.gain
+                    * envelope(at: localTime, duration: voice.duration)
             }
 
-            // Apply envelope (quick attack, sustain, quick release)
-            let envelope = Self.envelope(sample: i, totalSamples: Int(frameCount))
-            floatData[i] = raw * amplitude * envelope
+            samples[frame] = Float(max(-0.24, min(0.24, mixed)))
         }
-
         return buffer
     }
 
-    private func arpeggio(frequencies: [Double], noteDuration: Double, waveform: Waveform) -> AVAudioPCMBuffer? {
-        let totalDuration = Double(frequencies.count) * noteDuration
-        let totalFrames = AVAudioFrameCount(sampleRate * totalDuration)
-        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: totalFrames) else {
-            return nil
-        }
-        buffer.frameLength = totalFrames
-
-        guard let floatData = buffer.floatChannelData?[0] else { return nil }
-
-        let framesPerNote = Int(sampleRate * noteDuration)
-
-        for (noteIndex, freq) in frequencies.enumerated() {
-            let startFrame = noteIndex * framesPerNote
-            for i in 0..<framesPerNote {
-                let globalIndex = startFrame + i
-                guard globalIndex < Int(totalFrames) else { break }
-
-                let t = Double(i) / sampleRate
-                let phase = t * freq
-                let raw: Float
-
-                switch waveform {
-                case .square:
-                    raw = sin(2 * .pi * phase) >= 0 ? 1.0 : -1.0
-                case .triangle:
-                    let p = phase.truncatingRemainder(dividingBy: 1.0)
-                    raw = Float(4 * abs(p - 0.5) - 1.0)
-                case .sawtooth:
-                    let p = phase.truncatingRemainder(dividingBy: 1.0)
-                    raw = Float(2 * p - 1.0)
-                }
-
-                let envelope = Self.envelope(sample: i, totalSamples: framesPerNote)
-                floatData[globalIndex] = raw * amplitude * envelope
-            }
-        }
-
-        return buffer
-    }
-
-    /// Quick attack, sustain, quick release envelope.
-    private static func envelope(sample: Int, totalSamples: Int) -> Float {
-        let attackSamples = min(totalSamples / 10, 200)
-        let releaseSamples = min(totalSamples / 5, 400)
-        let sustainEnd = totalSamples - releaseSamples
-
-        if sample < attackSamples {
-            return Float(sample) / Float(attackSamples)
-        } else if sample < sustainEnd {
-            return 1.0
-        } else {
-            let releasePos = Float(sample - sustainEnd) / Float(releaseSamples)
-            return max(0, 1.0 - releasePos)
-        }
+    private func envelope(at time: Double, duration: Double) -> Double {
+        let attack = min(0.012, duration * 0.15)
+        let release = min(0.08, duration * 0.35)
+        let attackGain = min(1, time / attack)
+        let releaseGain = time < duration - release ? 1 : max(0, (duration - time) / release)
+        let decay = exp(-2.4 * time / duration)
+        return attackGain * releaseGain * decay
     }
 }

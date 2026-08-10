@@ -407,7 +407,7 @@ struct SettingsView: View {
         } header: {
             Text("My Sounds")
         } footer: {
-            Text("Import .wav / .mp3 / .m4a / .aiff / .caf, then pick it for any event above. Default = the built-in 8-bit chime.")
+            Text("Import .wav / .mp3 / .m4a / .aiff / .caf, then pick it for any event above. Default = the built-in calm chime.")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.leading)

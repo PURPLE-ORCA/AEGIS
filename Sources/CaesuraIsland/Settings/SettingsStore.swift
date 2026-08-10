@@ -120,7 +120,7 @@ final class SettingsStore: ObservableObject {
             "expandOnHover": true,
             "launchAtLogin": false,
             "hasCompletedOnboarding": false,
-            "soundSessionStart": true,
+            "soundSessionStart": false,
             "soundCompletion": true,
             "soundToolUse": false,
             "soundError": true,
@@ -138,9 +138,10 @@ final class SettingsStore: ObservableObject {
         // Load per-event assignments, or migrate once from the old toggles
         // (a `false` toggle → "off"). The old keys stay registered above so
         // this read returns correct defaults for fresh installs too.
+        var assignments: [String: String]
         if let data = defaults.data(forKey: "soundAssignments"),
            let map = try? JSONDecoder().decode([String: String].self, from: data) {
-            self.soundAssignments = map
+            assignments = map
         } else {
             var m: [String: String] = [:]
             if !defaults.bool(forKey: "soundSessionStart") { m["session-start"] = "off"; m["session-end"] = "off" }
@@ -150,8 +151,18 @@ final class SettingsStore: ObservableObject {
             if !defaults.bool(forKey: "soundPermission") {
                 m["approval-needed"] = "off"; m["approval-granted"] = "off"; m["approval-denied"] = "off"
             }
-            self.soundAssignments = m
+            assignments = m
         }
+        // Calm palette defaults to meaningful notifications only. Preserve
+        // custom files and explicit Off choices while silencing legacy default
+        // start/end chatter once for existing installs.
+        if defaults.integer(forKey: "builtInSoundVersion") < 2 {
+            for key in ["session-start", "session-end"] where assignments[key] == nil || assignments[key] == "default" {
+                assignments[key] = "off"
+            }
+            defaults.set(2, forKey: "builtInSoundVersion")
+        }
+        self.soundAssignments = assignments
         self.notchThemeID = NotchThemeID(rawValue: defaults.string(forKey: "notchThemeID") ?? "") ?? .default
         self.hasSeenThemeOnboarding = defaults.bool(forKey: "hasSeenThemeOnboarding")
         self.lastWhatsNewVersion = defaults.string(forKey: "lastWhatsNewVersion") ?? ""
