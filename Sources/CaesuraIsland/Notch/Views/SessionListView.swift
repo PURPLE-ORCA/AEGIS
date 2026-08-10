@@ -124,7 +124,7 @@ struct SessionListView: View {
                 }
                 Spacer()
             } else {
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     VStack(spacing: 12) {
                         ForEach(visibleProviders) { provider in
                             let cards = sessions(for: provider)

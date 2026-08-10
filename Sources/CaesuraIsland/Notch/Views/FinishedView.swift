@@ -141,7 +141,7 @@ struct FinishedView: View {
                             .fill(theme.boxFill)
                     )
 
-                    ScrollView {
+                    ScrollView(showsIndicators: false) {
                         MarkdownText(
                             text: reply,
                             color: theme.wellForeground.opacity(0.85),
