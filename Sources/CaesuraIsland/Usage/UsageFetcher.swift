@@ -32,11 +32,8 @@ enum UsageFetcher {
                   let rl = obj["rate_limit"] as? [String: Any] else {
                 return errorPair("parse error")
             }
-            return AppUsage(
-                fiveHour: parseCodexWindow(rl["primary_window"]),
-                weekly: parseCodexWindow(rl["secondary_window"]),
-                plan: obj["plan_type"] as? String
-            )
+            let windows = parseCodexWindows(rl)
+            return AppUsage(fiveHour: windows.short, weekly: windows.long, plan: obj["plan_type"] as? String)
         } catch {
             return errorPair(error.localizedDescription)
         }
@@ -62,7 +59,24 @@ enum UsageFetcher {
         guard let d = obj as? [String: Any] else { return .unknown }
         let used = (d["used_percent"] as? Double) ?? 0
         let resetAt = (d["reset_at"] as? Double).map { Date(timeIntervalSince1970: $0) }
-        return WindowUsage(usedPercent: used / 100, resetAt: resetAt, error: nil)
+        let windowSeconds = d["limit_window_seconds"] as? Double
+        return WindowUsage(usedPercent: used / 100, resetAt: resetAt, windowSeconds: windowSeconds, error: nil)
+    }
+
+    /// Codex no longer guarantees primary=5h and secondary=7d. Pro Lite, for
+    /// example, currently returns one 7d primary window. Classify by duration
+    /// so UI labels and slots follow the API instead of field position.
+    private static func parseCodexWindows(_ rateLimit: [String: Any]) -> (short: WindowUsage, long: WindowUsage) {
+        let primary = parseCodexWindow(rateLimit["primary_window"])
+        let secondary = parseCodexWindow(rateLimit["secondary_window"])
+        let available = [primary, secondary].filter { $0.resetAt != nil }
+
+        let short = available.first { ($0.windowSeconds ?? 0) < 2 * 86_400 }
+        let long = available.first { ($0.windowSeconds ?? 0) >= 2 * 86_400 }
+
+        // Old responses omitted duration but still used primary/secondary order.
+        return (short ?? (primary.windowSeconds == nil ? primary : .unknown),
+                long ?? (secondary.windowSeconds == nil ? secondary : .unknown))
     }
 
 }

@@ -5,9 +5,17 @@ import Foundation
 struct WindowUsage {
     let usedPercent: Double
     let resetAt: Date?
+    let windowSeconds: TimeInterval?
     let error: String?
 
-    static let unknown = WindowUsage(usedPercent: 0, resetAt: nil, error: "no data")
+    static let unknown = WindowUsage(usedPercent: 0, resetAt: nil, windowSeconds: nil, error: "no data")
+
+    init(usedPercent: Double, resetAt: Date?, windowSeconds: TimeInterval? = nil, error: String?) {
+        self.usedPercent = usedPercent
+        self.resetAt = resetAt
+        self.windowSeconds = windowSeconds
+        self.error = error
+    }
 
     var percentInt: Int { Int((usedPercent * 100).rounded()) }
 }

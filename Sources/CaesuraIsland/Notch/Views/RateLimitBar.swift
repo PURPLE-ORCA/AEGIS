@@ -17,12 +17,12 @@ struct RateLimitBar: View {
             ProviderIcon(provider: provider, size: 12)
 
             if let fh = snapshot.fiveHour {
-                Text("5h")
+                Text(fh.windowLabel)
                     .font(theme.font(size: 10, weight: .bold))
                     .foregroundColor(.white.opacity(0.5))
-                Text("\(fh.usedPercentage)%")
+                Text("\(fh.remainingPercentage)% left")
                     .font(theme.font(size: 10, weight: .bold))
-                    .foregroundColor(colorForPct(fh.usedPercentage))
+                    .foregroundColor(colorForRemaining(fh.remainingPercentage))
                 Text(fh.timeRemaining)
                     .font(theme.font(size: 10))
                     .foregroundColor(.white.opacity(0.4))
@@ -35,12 +35,12 @@ struct RateLimitBar: View {
             }
 
             if let sd = snapshot.sevenDay {
-                Text("7d")
+                Text(sd.windowLabel)
                     .font(theme.font(size: 10, weight: .bold))
                     .foregroundColor(.white.opacity(0.5))
-                Text("\(sd.usedPercentage)%")
+                Text("\(sd.remainingPercentage)% left")
                     .font(theme.font(size: 10, weight: .bold))
-                    .foregroundColor(colorForPct(sd.usedPercentage))
+                    .foregroundColor(colorForRemaining(sd.remainingPercentage))
                 Text(sd.timeRemaining)
                     .font(theme.font(size: 10))
                     .foregroundColor(.white.opacity(0.4))
@@ -60,10 +60,10 @@ struct RateLimitBar: View {
         }
     }
 
-    private func colorForPct(_ pct: Int) -> Color {
-        if pct >= 90 { return .red }
-        if pct >= 70 { return .orange }
-        if pct >= 50 { return .yellow }
+    private func colorForRemaining(_ pct: Int) -> Color {
+        if pct <= 10 { return .red }
+        if pct <= 30 { return .orange }
+        if pct <= 50 { return .yellow }
         return .green
     }
 }

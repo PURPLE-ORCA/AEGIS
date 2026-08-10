@@ -5,8 +5,9 @@ import Combine
 /// Wraps `WindowUsage` (normalized 0…1 percent + optional reset time) with
 /// the "Xh / Xm / Xd remaining" formatting the bar prints.
 struct RateLimit {
-    let usedPercentage: Int
+    let remainingPercentage: Int
     let resetsAt: Date
+    let windowLabel: String
 
     var timeRemaining: String {
         let remaining = resetsAt.timeIntervalSinceNow
@@ -27,10 +28,20 @@ struct RateLimit {
         return "\(minutes)m"
     }
 
-    init?(window: WindowUsage) {
+    init?(window: WindowUsage, fallbackLabel: String) {
         guard let reset = window.resetAt else { return nil }
-        self.usedPercentage = window.percentInt
+        self.remainingPercentage = max(0, min(100, 100 - window.percentInt))
         self.resetsAt = reset
+        self.windowLabel = Self.label(for: window.windowSeconds) ?? fallbackLabel
+    }
+
+    private static func label(for seconds: TimeInterval?) -> String? {
+        guard let seconds, seconds > 0 else { return nil }
+        let totalHours = Int(seconds / 3600)
+        if totalHours >= 48, totalHours.isMultiple(of: 24) {
+            return "\(totalHours / 24)d"
+        }
+        return "\(totalHours)h"
     }
 }
 
@@ -50,7 +61,7 @@ final class RateLimitStore: ObservableObject {
     @Published private(set) var usage: [String: ProviderUsage] = [:]
 
     private var timer: Timer?
-    private let refreshInterval: TimeInterval = 5 * 60  // 5 minutes
+    private let refreshInterval: TimeInterval = 60
 
     init() {
         // Kick off an initial fetch and start the refresh timer.
@@ -83,8 +94,8 @@ final class RateLimitStore: ObservableObject {
 
     private static func snapshot(from app: AppUsage) -> ProviderUsage {
         ProviderUsage(
-            fiveHour: RateLimit(window: app.fiveHour),
-            sevenDay: RateLimit(window: app.weekly),
+            fiveHour: RateLimit(window: app.fiveHour, fallbackLabel: "5h"),
+            sevenDay: RateLimit(window: app.weekly, fallbackLabel: "7d"),
             plan: app.plan,
             error: app.fiveHour.error ?? app.weekly.error
         )
