@@ -410,7 +410,6 @@ message["agent_pid"] = Int(getppid())
 if !envVars.isEmpty { message["_env"] = envVars }
 if let userMessage { message["user_message"] = userMessage }
 if let assistantMessage { message["assistant_message"] = assistantMessage }
-if let permMode = payload["permission_mode"] as? String { message["permission_mode"] = permMode }
 if let sessionTitle = payload["session_title"] as? String, !sessionTitle.isEmpty {
     message["session_title"] = sessionTitle
 }

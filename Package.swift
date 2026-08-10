@@ -15,7 +15,6 @@ let package = Package(
             ],
             path: "Sources/CaesuraIsland",
             resources: [
-                .copy("../../Resources/Sounds"),
                 .copy("../../Resources/cli-icons"),
                 .copy("../../Resources/branding"),
             ]

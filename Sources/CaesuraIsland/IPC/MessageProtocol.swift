@@ -11,7 +11,6 @@ struct BridgeMessage: Codable {
     let env: [String: String]?
     let userMessage: String?
     let assistantMessage: String?
-    let permissionMode: String?
     let effortLevel: String?
     let durationMs: Int?
     let toolFilePath: String?
@@ -51,7 +50,6 @@ struct BridgeMessage: Codable {
         case env = "_env"
         case userMessage = "user_message"
         case assistantMessage = "assistant_message"
-        case permissionMode = "permission_mode"
         case effortLevel = "effort_level"
         case durationMs = "duration_ms"
         case toolFilePath = "tool_file_path"

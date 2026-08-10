@@ -14,7 +14,7 @@ agent hook
   -> NotchWindowController / SwiftUI views
 ```
 
-The app target is `CaesuraIsland`. The bridge target is `CaesuraIslandBridge`. On launch, `BridgeInstaller` copies the bridge executable into `~/.caesura-island/bin` and writes one launcher per supported agent. `CodexInstaller` and the descriptor-driven `ProviderInstaller` merge managed hook entries into detected provider configurations.
+The app target is `CaesuraIsland`. The bridge target is `CaesuraIslandBridge`. On launch, `CodexInstaller` and the descriptor-driven `ProviderInstaller` write provider launchers under `~/.caesura-island/bin` and merge managed hook entries into detected configurations. Each launcher resolves the bridge embedded in the current app bundle before trying installed-app and development paths.
 
 Do not launch the app in an environment where provider configs must remain untouched. First launch may install hooks.
 

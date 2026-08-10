@@ -538,7 +538,7 @@ final class SessionStore: ObservableObject {
         onEvent.send(.sessionEnded(threadId))
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(2))
-            await MainActor.run { self?.sessions.removeValue(forKey: threadId) }
+            _ = await MainActor.run { self?.sessions.removeValue(forKey: threadId) }
         }
     }
 
