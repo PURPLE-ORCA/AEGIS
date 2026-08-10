@@ -91,7 +91,9 @@ struct NotchContentView: View {
             let h = store.sessions[next].map { NotchViewModel.permissionHeight(for: $0) }
             viewModel.showPermission(sessionId: next, contentHeight: h)
             return true
-        } else if let next = store.nextPendingQuestion() {
+        } else if let next = store.nextPendingQuestion(
+            excluding: viewModel.suppressedQuestionSessionIDs
+        ) {
             viewModel.showQuestion(sessionId: next)
             return true
         }
@@ -183,7 +185,7 @@ struct NotchContentView: View {
                         sessionStore.deferQuestionToTerminal(sessionId: sessionId)
                         if !showNextPending() { viewModel.dismissQuestion() }
                     },
-                    onDismiss: { viewModel.dismissQuestion() },
+                    onDismiss: { viewModel.suppressQuestion(sessionId: sessionId) },
                     rateLimitStore: rateLimitStore,
                     settingsStore: settingsStore,
                     onOpenSettings: onOpenSettings

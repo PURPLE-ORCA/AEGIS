@@ -142,6 +142,7 @@ final class NotchViewModel: ObservableObject {
     // MARK: - Auto-collapse
     private var autoCollapseTask: Task<Void, Never>?
     private var finishedAutoCollapseDeadline: Date?
+    private(set) var suppressedQuestionSessionIDs: Set<String> = []
 
     func expand(holdSeconds: Double? = nil) {
         guard state == .collapsed else { return }
@@ -188,10 +189,16 @@ final class NotchViewModel: ObservableObject {
 
     func showQuestion(sessionId: String) {
         autoCollapseTask?.cancel()
+        suppressedQuestionSessionIDs.remove(sessionId)
         state = .question(sessionId: sessionId)
     }
 
     func dismissQuestion() {
+        state = .collapsed
+    }
+
+    func suppressQuestion(sessionId: String) {
+        suppressedQuestionSessionIDs.insert(sessionId)
         state = .collapsed
     }
 

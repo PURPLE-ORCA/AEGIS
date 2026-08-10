@@ -42,4 +42,17 @@ final class AutoCollapsePolicyTests: XCTestCase {
             .pause
         )
     }
+
+    func testSuppressedQuestionStaysDismissedUntilShownAgain() {
+        let viewModel = NotchViewModel()
+        viewModel.showQuestion(sessionId: "session")
+        viewModel.suppressQuestion(sessionId: "session")
+
+        XCTAssertEqual(viewModel.state, .collapsed)
+        XCTAssertTrue(viewModel.suppressedQuestionSessionIDs.contains("session"))
+
+        viewModel.showQuestion(sessionId: "session")
+
+        XCTAssertFalse(viewModel.suppressedQuestionSessionIDs.contains("session"))
+    }
 }

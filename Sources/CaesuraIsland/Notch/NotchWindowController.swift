@@ -123,7 +123,9 @@ final class NotchWindowController: NSWindowController {
                     if let next = sessionStore.nextPendingPermission() {
                         let h = sessionStore.sessions[next].map { NotchViewModel.permissionHeight(for: $0) }
                         viewModel.showPermission(sessionId: next, contentHeight: h)
-                    } else if let next = sessionStore.nextPendingQuestion() {
+                    } else if let next = sessionStore.nextPendingQuestion(
+                        excluding: viewModel.suppressedQuestionSessionIDs
+                    ) {
                         viewModel.showQuestion(sessionId: next)
                     } else {
                         viewModel.collapse()

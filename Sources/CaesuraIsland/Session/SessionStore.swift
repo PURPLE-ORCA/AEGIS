@@ -522,9 +522,10 @@ final class SessionStore: ObservableObject {
 
     /// Returns the session ID of the next session with a pending question,
     /// ordered by enqueue time (oldest first).
-    func nextPendingQuestion() -> String? {
+    func nextPendingQuestion(excluding excludedSessionIDs: Set<String> = []) -> String? {
         sessions.values
             .compactMap { s -> (id: String, at: Date)? in
+                guard !excludedSessionIDs.contains(s.id) else { return nil }
                 guard let q = s.pendingQuestion else { return nil }
                 return (s.id, q.requestedAt)
             }
