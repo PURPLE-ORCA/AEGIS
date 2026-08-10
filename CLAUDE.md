@@ -1,19 +1,19 @@
-# Code Island
+# CAESURA-ISLAND
 
 A native macOS Swift app that turns your MacBook's notch into a live dashboard for **17 AI coding agents** — Claude Code, Codex, Gemini, Qwen, Qoder, Factory (`droid`), CodeBuddy, Cursor, Copilot, Kimi, OpenCode, Cline, Kiro, Pi, Oh My Pi (`omp`), AntiGravity, and Hermes. Inspired by [Vibe Island](https://vibeisland.app). See [README.md](README.md) for user-facing docs.
 
 ## Architecture
 
 ```
-Code Island.app/
+CAESURA-ISLAND.app/
 ├── Contents/
-│   ├── MacOS/code-island                ← Main SwiftUI app (menu bar, notch panel)
-│   ├── Helpers/CodeIslandBridge         ← CLI bridge: reads hook JSON via stdin; --source / --event flags
+│   ├── MacOS/caesura-island                ← Main SwiftUI app (menu bar, notch panel)
+│   ├── Helpers/CaesuraIslandBridge         ← CLI bridge: reads hook JSON via stdin; --source / --event flags
 │   └── Info.plist                       ← LSUIElement=true (no dock icon)
-└── ~/.code-island/
-    ├── bin/code-island-<agent>-bridge   ← one zsh launcher per agent (claude has no suffix; codex/gemini/cursor/…)
+└── ~/.caesura-island/
+    ├── bin/caesura-island-<agent>-bridge   ← one zsh launcher per agent (claude has no suffix; codex/gemini/cursor/…)
     ├── config.json                      ← {"strictApproval": {provider: bool}} — read by the bridge
-    ├── run/code-island.pid
+    ├── run/caesura-island.pid
     ├── cache/rl.json                    ← Cached rate limits per provider
     ├── debug.log                        ← Runtime debug log
     └── sound-packs/                     ← User sound packs
@@ -23,7 +23,7 @@ Code Island.app/
 
 ## Provider Abstraction
 
-`AIProvider` (Sources/CodeIsland/Session/AIProvider.swift) unifies all 17 agents with:
+`AIProvider` (Sources/CaesuraIsland/Session/AIProvider.swift) unifies all 17 agents with:
 - `id`, `displayName`, `accentColor`
 - `mascotShape` (per-agent Canvas pixel art — `.crab`, `.box`, `.geminiStar`, `.qwenGem`, `.qoderBlob`, `.factoryBot`, `.buddyCat`, `.cursorBox`, `.copilotBot`, `.kimiMoon`, `.openCodeMark`, `.clineBot`, `.kiroGhost`, `.piGlyph` (Pi + Oh My Pi), `.antigravityOrbit`, `.hermesWing`)
 - `mascotPalette` / `activeMascotPalette`
@@ -38,9 +38,9 @@ Each `Session.source` defaults to "claude" if the bridge doesn't stamp it. **The
 ## IPC Flow
 
 1. Agent fires hooks (SessionStart, Stop, PreToolUse, PostToolUse, PermissionRequest, etc.)
-2. Hook calls the appropriate launcher in `~/.code-island/bin/` with JSON on stdin (some agents also pass `--event <name>` because their stdin omits the event)
+2. Hook calls the appropriate launcher in `~/.caesura-island/bin/` with JSON on stdin (some agents also pass `--event <name>` because their stdin omits the event)
 3. Bridge stamps `source`, captures parent PID via `getppid()`, enriches with terminal env vars (process tree walk for bundle ID), and **normalizes each agent's event vocabulary to our canonical set** (e.g. Gemini `BeforeTool`→`PreToolUse`, Cursor `afterAgentResponse`→`Stop`)
-4. Bridge sends JSON to Code Island app via Unix socket at `/tmp/code-island.sock`
+4. Bridge sends JSON to CAESURA-ISLAND app via Unix socket at `/tmp/caesura-island.sock`
 5. For PermissionRequest: socket connection stays open, app sends response back, bridge outputs to stdout (translating to the agent's native response shape when it's a strict-approval gate — see below)
 
 **Canonical event guard**: `SessionStore.handleMessage` drops any message whose `hookEvent` isn't in the canonical set (`SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `Notification`, `SubagentStart`, `SubagentStop`, `PreCompact`). Every bridge normalizes to these before sending, so a raw camelCase name arriving means a foreign/misconfigured integration sharing the socket — ignore it (this fixed Cursor sessions getting mis-attributed to Claude by a phantom sender).
@@ -67,7 +67,7 @@ Each `Session.source` defaults to "claude" if the bridge doesn't stamp it. **The
 
 Codex fires the **native `PermissionRequest`** hook event (same Claude-shaped `{decision:{behavior:"allow"|"deny"}}` response — verified docs: developers.openai.com/codex/hooks), so **Allow Once / Deny work directly** through the hook decision, just like Claude.
 
-The catch is **persistence**: Codex's PermissionRequest decides a *single* call only, and `updatedPermissions`/`updatedInput` are **unsupported (fail-closed)** — sending them makes Codex DENY. So for **Allow All / Bypass** we append a `prefix_rule(...)` block to `~/.codex/rules/codeisland.rules` (see `CodexPermissionRules.swift`) AND return a plain `behavior: allow` (the rule matches future calls):
+The catch is **persistence**: Codex's PermissionRequest decides a *single* call only, and `updatedPermissions`/`updatedInput` are **unsupported (fail-closed)** — sending them makes Codex DENY. So for **Allow All / Bypass** we append a `prefix_rule(...)` block to `~/.codex/rules/caesuraisland.rules` (see `CodexPermissionRules.swift`) AND return a plain `behavior: allow` (the rule matches future calls):
 - **Allow All** for Bash: first 3 tokens become the prefix (`git commit -m`)
 - **Allow All** for other tools: prefix is the tool name
 - **Bypass** (broad): first 1 token (Codex rejects empty patterns — true wildcards aren't possible)
@@ -150,7 +150,7 @@ Live-fetched over HTTP (not statusline anymore):
 
 ## Theming
 
-`NotchTheme` (Sources/CodeIsland/Notch/NotchTheme.swift) is a pure token set that restyles the notch **chrome only**. Six themes, selectable in **Settings → Appearance** (live preview cards, instant switching):
+`NotchTheme` (Sources/CaesuraIsland/Notch/NotchTheme.swift) is a pure token set that restyles the notch **chrome only**. Six themes, selectable in **Settings → Appearance** (live preview cards, instant switching):
 
 - `default` — the original look, **unchanged** (load-bearing: existing users must see no difference)
 - `glass` — Liquid Glass (translucent `.ultraThinMaterial` window, capsule controls, sans font)
@@ -218,19 +218,19 @@ swift build -c release         # Release
 
 ```bash
 brew install create-dmg
-./scripts/build-dmg.sh 1.0.0   # produces build/Code-Island-1.0.0.dmg
+./scripts/build-dmg.sh 1.0.0   # produces build/CAESURA-ISLAND-1.0.0.dmg
 ```
 
 ## Development Tips
 
-- Process name is `CodeIsland` (no space) — use `pkill -9 CodeIsland` not `pkill -f "Code Island"` (the latter matches other processes)
-- Kill and relaunch: `pkill -9 CodeIsland; sleep 1; rm -f /tmp/code-island.sock; .build/debug/CodeIsland &`
-- Reset onboarding/prefs: `defaults delete dev.codeisland.macos` (the bundle ID, not "CodeIsland")
-- Full uninstall: `pkill -9 CodeIsland; rm -rf "/Applications/Code Island.app" ~/.code-island; defaults delete dev.codeisland.macos; rm -f /tmp/code-island.sock`
-- Debug log: `tail -f ~/.code-island/debug.log`
-- Test bridge: `echo '{"session_id":"test","hook_event_name":"SessionStart","cwd":"/tmp"}' | .build/debug/CodeIslandBridge`
+- Process name is `CaesuraIsland` (no space) — use `pkill -9 CaesuraIsland` not `pkill -f "CAESURA-ISLAND"` (the latter matches other processes)
+- Kill and relaunch: `pkill -9 CaesuraIsland; sleep 1; rm -f /tmp/caesura-island.sock; .build/debug/CaesuraIsland &`
+- Reset onboarding/prefs: `defaults delete dev.caesura.island` (the bundle ID, not "CaesuraIsland")
+- Full uninstall: `pkill -9 CaesuraIsland; rm -rf "/Applications/CAESURA-ISLAND.app" ~/.caesura-island; defaults delete dev.caesura.island; rm -f /tmp/caesura-island.sock`
+- Debug log: `tail -f ~/.caesura-island/debug.log`
+- Test bridge: `echo '{"session_id":"test","hook_event_name":"SessionStart","cwd":"/tmp"}' | .build/debug/CaesuraIslandBridge`
 - Test Codex bridge: append `--source codex` to the bridge invocation
-- Tap raw Codex JSON: swap `~/.code-island/bin/code-island-codex-bridge` for a tee script that copies stdin to a debug file before forwarding
+- Tap raw Codex JSON: swap `~/.caesura-island/bin/caesura-island-codex-bridge` for a tee script that copies stdin to a debug file before forwarding
 
 ## Sounds
 
@@ -241,28 +241,28 @@ Per-sound toggles in Settings + onboarding `SoundEngine`:
 - `error`
 - `approvalNeeded` / `approvalGranted` / `approvalDenied`
 
-Generated at runtime by `SoundSynthesizer` (8-bit square/triangle/sawtooth waves). Drop custom audio files (`.wav` / `.mp3` / `.m4a` / `.aiff` / `.caf`) into `~/.code-island/sound-packs/<event-name>.<ext>` to override; delete the file to revert to the synth default.
+Generated at runtime by `SoundSynthesizer` (8-bit square/triangle/sawtooth waves). Drop custom audio files (`.wav` / `.mp3` / `.m4a` / `.aiff` / `.caf`) into `~/.caesura-island/sound-packs/<event-name>.<ext>` to override; delete the file to revert to the synth default.
 
 ## Hook Installers
 
 Three installers run idempotently on every launch (`AppDelegate.applicationDidFinishLaunching` → `HookInstaller.install()`, `CodexInstaller.install()`, `ProviderInstaller.installAll()`). All preserve foreign hooks, back the original up to `.bak`, and skip the write when nothing changed.
 
-### Claude (`HookInstaller`) — `~/.claude/settings.json`, all events with `matcher: "*"`, launcher `code-island-bridge`.
-### Codex (`CodexInstaller`) — `~/.codex/hooks.json` (nested, no matcher) + `[features].hooks = true` in `config.toml`; launcher `code-island-codex-bridge`. Also persists Allow-All/Bypass as `prefix_rule(...)` (see Codex Permission Persistence).
+### Claude (`HookInstaller`) — `~/.claude/settings.json`, all events with `matcher: "*"`, launcher `caesura-island-bridge`.
+### Codex (`CodexInstaller`) — `~/.codex/hooks.json` (nested, no matcher) + `[features].hooks = true` in `config.toml`; launcher `caesura-island-codex-bridge`. Also persists Allow-All/Bypass as `prefix_rule(...)` (see Codex Permission Persistence).
 
-### The other 15 (`ProviderInstaller`, Sources/CodeIsland/Utilities/ProviderInstaller.swift)
+### The other 15 (`ProviderInstaller`, Sources/CaesuraIsland/Utilities/ProviderInstaller.swift)
 A single descriptor-driven engine. Each provider is a `Descriptor` (source, config path, `Format`, `TimeoutUnit`, events, `createDirIfMissing`, `detectPaths`). Only installs when the tool is present (config dir exists OR a `detectPaths` entry exists), except Factory which bootstraps. `Format` cases:
 - `.claudeFork` — `{matcher:"*", hooks:[{type,command,timeout}]}` per event. **Gemini timeouts are ms**, the rest seconds. (Qwen/Qoder/Factory/CodeBuddy.)
 - `.nested` — like claudeFork without `matcher` (Gemini).
 - `.flat` — `[{command}]`, event via `--event` (Cursor).
 - `.copilot` — `{version:1, hooks:{event:[{type,bash,timeoutSec}]}}`, event via `--event`.
 - `.toml` — Kimi: marker-delimited `[[hooks]]` block appended to `~/.kimi/config.toml` (text merge, not JSON).
-- `.opencodePlugin` — writes a JS plugin to `~/.config/opencode/plugins/codeisland.js` and registers it in `opencode.json`'s `plugin` array (JSONC-tolerant).
+- `.opencodePlugin` — writes a JS plugin to `~/.config/opencode/plugins/caesuraisland.js` and registers it in `opencode.json`'s `plugin` array (JSONC-tolerant).
 - `.clineScripts` — one executable bash script per event in `~/Documents/Cline/Hooks/` (chmod 0755), each pipes stdin → launcher `--event` and prints `{"cancel":false}`.
-- `.kiroAgent` — Kiro: agent-scoped JSON at `~/.kiro/agents/codeisland.json` (`{command,matcher,timeout_ms}` + seeded `name`). **Only fires when launched as `kiro --agent codeisland`.**
-- `.piExtension` — Pi / Oh My Pi: a TypeScript extension written to `~/.<src>/agent/extensions/codeisland.ts` that shells out to the launcher per event (import scope differs pi vs omp).
-- `.hermesYAML` — Nous Hermes: merges a `hooks:` map into `~/.hermes/config.yaml` (only when empty or `# code-island-managed`; bails on user content, backs up to `.bak`). Needs one-time `hermes hooks` approval.
-- `.antigravityJSON` — Google AntiGravity: a named `code-island` hook group merged into `~/.gemini/config/hooks.json`. Detected via `~/.gemini/antigravity` so Gemini-CLI-only users aren't touched. Daemon caches hooks at startup → needs an AntiGravity restart to load.
+- `.kiroAgent` — Kiro: agent-scoped JSON at `~/.kiro/agents/caesuraisland.json` (`{command,matcher,timeout_ms}` + seeded `name`). **Only fires when launched as `kiro --agent caesuraisland`.**
+- `.piExtension` — Pi / Oh My Pi: a TypeScript extension written to `~/.<src>/agent/extensions/caesuraisland.ts` that shells out to the launcher per event (import scope differs pi vs omp).
+- `.hermesYAML` — Nous Hermes: merges a `hooks:` map into `~/.hermes/config.yaml` (only when empty or `# caesura-island-managed`; bails on user content, backs up to `.bak`). Needs one-time `hermes hooks` approval.
+- `.antigravityJSON` — Google AntiGravity: a named `caesura-island` hook group merged into `~/.gemini/config/hooks.json`. Detected via `~/.gemini/antigravity` so Gemini-CLI-only users aren't touched. Daemon caches hooks at startup → needs an AntiGravity restart to load.
 
 `installSource(_:)` force-installs one provider (Settings → Providers reinstall buttons). Returns `Bool` for the onboarding checkmark/retry UI.
 
@@ -272,7 +272,7 @@ Agents that drive the in-notch approve/deny+question UI: **Claude, Codex, Qwen, 
 
 ## Strict Approval ("Review every action")
 
-Opt-in, per provider, for the blanket-hook tools (**Gemini, Cursor, Copilot, Kimi, AntiGravity**) that lack a selective permission event. `SettingsStore.strictApproval: [String: Bool]` is persisted to UserDefaults AND mirrored to `~/.code-island/config.json`. The bridge reads that file each run; when a provider's flag is on and the event is one of its gate events (`permissionGateEvents` in main.swift — Gemini `BeforeTool`, Cursor `beforeShellExecution`/`beforeMCPExecution`, Copilot `preToolUse`, Kimi `PreToolUse`, AntiGravity `PreToolUse`), it routes the event through the blocking `PermissionRequest` path and **translates** the app's Claude-shaped decision into the tool's native response (`{"permission":…}` / Gemini & AntiGravity `{"decision":…}` / `{"permissionDecision":…}` / Kimi's `hookSpecificOutput`). Gate-event hook timeouts are installed long (~5 min) so the prompt has time; off → the bridge returns instantly (today's PreToolUse behavior). Settings → General → "Review every action".
+Opt-in, per provider, for the blanket-hook tools (**Gemini, Cursor, Copilot, Kimi, AntiGravity**) that lack a selective permission event. `SettingsStore.strictApproval: [String: Bool]` is persisted to UserDefaults AND mirrored to `~/.caesura-island/config.json`. The bridge reads that file each run; when a provider's flag is on and the event is one of its gate events (`permissionGateEvents` in main.swift — Gemini `BeforeTool`, Cursor `beforeShellExecution`/`beforeMCPExecution`, Copilot `preToolUse`, Kimi `PreToolUse`, AntiGravity `PreToolUse`), it routes the event through the blocking `PermissionRequest` path and **translates** the app's Claude-shaped decision into the tool's native response (`{"permission":…}` / Gemini & AntiGravity `{"decision":…}` / `{"permissionDecision":…}` / Kimi's `hookSpecificOutput`). Gate-event hook timeouts are installed long (~5 min) so the prompt has time; off → the bridge returns instantly (today's PreToolUse behavior). Settings → General → "Review every action".
 
 ## Onboarding & What's New
 

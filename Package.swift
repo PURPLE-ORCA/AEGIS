@@ -2,18 +2,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "CodeIsland",
+    name: "CaesuraIsland",
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/simibac/ConfettiSwiftUI.git", from: "1.0.0"),
     ],
     targets: [
         .executableTarget(
-            name: "CodeIsland",
+            name: "CaesuraIsland",
             dependencies: [
                 .product(name: "ConfettiSwiftUI", package: "ConfettiSwiftUI"),
             ],
-            path: "Sources/CodeIsland",
+            path: "Sources/CaesuraIsland",
             resources: [
                 .copy("../../Resources/Sounds"),
                 .copy("../../Resources/cli-icons"),
@@ -21,8 +21,8 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "CodeIslandBridge",
-            path: "Sources/CodeIslandBridge"
+            name: "CaesuraIslandBridge",
+            path: "Sources/CaesuraIslandBridge"
         ),
     ]
 )
