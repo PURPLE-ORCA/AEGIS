@@ -7,6 +7,7 @@ struct NotchContentView: View {
     @ObservedObject var settingsStore: SettingsStore
     let onPermissionRespond: (String, PermissionAction) -> Void
     let onOpenSettings: () -> Void
+    @State private var hoverActivationTask: Task<Void, Never>?
 
     private var theme: NotchTheme { settingsStore.notchThemeID.theme }
 
@@ -50,17 +51,34 @@ struct NotchContentView: View {
             }
         }
         .environment(\.notchTheme, theme)
+        .onTapGesture {
+            if case .collapsed = viewModel.state {
+                activateCollapsed()
+            }
+        }
         .onHover { hovering in
             if hovering {
                 viewModel.mouseEntered()
-                if case .collapsed = viewModel.state {
-                    // Surface a pending permission/question first, else expand
-                    if !showNextPending() { viewModel.expand() }
+                if settingsStore.expandOnHover, case .collapsed = viewModel.state {
+                    hoverActivationTask?.cancel()
+                    hoverActivationTask = Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(350))
+                        guard !Task.isCancelled, viewModel.isHovered,
+                              case .collapsed = viewModel.state else { return }
+                        activateCollapsed()
+                    }
                 }
             } else {
+                hoverActivationTask?.cancel()
+                hoverActivationTask = nil
                 viewModel.mouseExited()
             }
         }
+        .onDisappear { hoverActivationTask?.cancel() }
+    }
+
+    private func activateCollapsed() {
+        if !showNextPending() { viewModel.expand() }
     }
 
     /// Surface the next queued decision (oldest-first): a permission routes to

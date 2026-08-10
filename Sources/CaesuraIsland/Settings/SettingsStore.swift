@@ -12,6 +12,9 @@ final class SettingsStore: ObservableObject {
     @Published var autoExpandOnPermission: Bool {
         didSet { UserDefaults.standard.set(autoExpandOnPermission, forKey: "autoExpandOnPermission") }
     }
+    @Published var expandOnHover: Bool {
+        didSet { UserDefaults.standard.set(expandOnHover, forKey: "expandOnHover") }
+    }
     @Published var launchAtLogin: Bool {
         didSet {
             UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin")
@@ -114,6 +117,7 @@ final class SettingsStore: ObservableObject {
             "soundEnabled": true,
             "soundVolume": Float(0.7),
             "autoExpandOnPermission": true,
+            "expandOnHover": true,
             "launchAtLogin": false,
             "hasCompletedOnboarding": false,
             "soundSessionStart": true,
@@ -128,6 +132,7 @@ final class SettingsStore: ObservableObject {
         self.soundEnabled = defaults.bool(forKey: "soundEnabled")
         self.soundVolume = defaults.float(forKey: "soundVolume")
         self.autoExpandOnPermission = defaults.bool(forKey: "autoExpandOnPermission")
+        self.expandOnHover = defaults.bool(forKey: "expandOnHover")
         self.launchAtLogin = defaults.bool(forKey: "launchAtLogin")
         self.hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
         // Load per-event assignments, or migrate once from the old toggles
