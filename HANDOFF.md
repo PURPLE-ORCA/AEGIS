@@ -25,6 +25,8 @@ Final verification passed for the debug build, release build, bundle assembly, `
 - Default game-style waveforms were replaced by restrained sine-partial notification tones. Session start/end and tool-use chatter default to Off.
 - New purple-black `Caesura` appearance is selected by default through a one-time preference migration.
 - Command-comma now opens the real Settings window instead of the empty SwiftUI settings scene.
+- Codex Desktop is monitored through appended rollout JSONL events in `~/.codex/sessions`; the previous redundant `codex app-server` subprocess was removed.
+- Hermes Desktop is monitored through new desktop-only message rows in `~/.hermes/state.db` using SQLite WAL-safe reads.
 - Follow-up GUI evidence: [`docs/test-evidence/17-followup-results.txt`](docs/test-evidence/17-followup-results.txt).
 
 ## Scope completed
@@ -48,9 +50,11 @@ Final verification passed for the debug build, release build, bundle assembly, `
 | --- | --- | --- |
 | 1. Launch, top-center borderless notch, no focus steal | Pass | [`docs/test-evidence/01-launch-not-focused.png`](docs/test-evidence/01-launch-not-focused.png), [`docs/test-evidence/12-final-build-launch.png`](docs/test-evidence/12-final-build-launch.png) |
 | 2. First-launch installers and foreign-config preservation | Pass | [`docs/test-evidence/02-installers.txt`](docs/test-evidence/02-installers.txt) |
-| 3. Hermes live working → finished | Pass | [`docs/test-evidence/04-hermes-working.png`](docs/test-evidence/04-hermes-working.png), [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt) |
+| 3. Hermes CLI live working → finished | Pass | [`docs/test-evidence/04-hermes-working.png`](docs/test-evidence/04-hermes-working.png), [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt) |
+| 3. Hermes Desktop live working → finished | Pass | [`docs/test-evidence/hermes-desktop-working.png`](docs/test-evidence/hermes-desktop-working.png), [`docs/test-evidence/desktop-sessions-expanded.png`](docs/test-evidence/desktop-sessions-expanded.png), [`docs/test-evidence/19-desktop-session-results.txt`](docs/test-evidence/19-desktop-session-results.txt) |
 | 3. OpenCode live working → finished | Pass | [`docs/test-evidence/06-opencode-working.png`](docs/test-evidence/06-opencode-working.png), [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt) |
-| 3. Codex live working → finished | Partial / live UI untested | The real command completed, but installed Codex CLI 0.135.0 did not emit lifecycle hooks. Direct launcher → bridge → socket delivery passed. See [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt). |
+| 3. Codex CLI live working → finished | Partial / live UI untested | The real command completed, but installed Codex CLI 0.135.0 did not emit lifecycle hooks. Direct launcher → bridge → socket delivery passed. See [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt). |
+| 3. Codex Desktop live prompt/tool state | Pass | [`docs/test-evidence/codex-desktop-working.png`](docs/test-evidence/codex-desktop-working.png), [`docs/test-evidence/desktop-sessions-expanded.png`](docs/test-evidence/desktop-sessions-expanded.png), [`docs/test-evidence/19-desktop-session-results.txt`](docs/test-evidence/19-desktop-session-results.txt) |
 | 3. AntiGravity live working → finished | Partial / live UI untested | The real `agy --print` command completed, but the headless client did not emit its configured hooks. See [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt). |
 | 4. Permission Allow and Deny | Pass | [`docs/test-evidence/08-opencode-permission.png`](docs/test-evidence/08-opencode-permission.png), [`docs/test-evidence/09-opencode-deny.png`](docs/test-evidence/09-opencode-deny.png), [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt) |
 | 5. Terminal jump | Untested | Computer Use refused access to Ghostty for safety reasons, so the destination tab could not be driven or observed. |
@@ -59,6 +63,8 @@ Final verification passed for the debug build, release build, bundle assembly, `
 | 7. Session recovery after relaunch | Unsupported / untested | The preserved SessionStore is in-memory and has no disk serialization, so cross-process session recovery cannot be claimed. |
 
 No crash, hang, or focus steal occurred during the completed GUI tests.
+
+Codex and Hermes desktop monitoring is read-only. It covers prompt, thinking, tool, final-response, model, title, and workspace state. Provider-owned desktop permission dialogs remain in their respective desktop apps; notch Allow/Deny continues to apply to interactive CLI hook requests.
 
 ## Real agent configuration changes
 

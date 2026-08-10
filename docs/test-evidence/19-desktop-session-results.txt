@@ -1,0 +1,34 @@
+CAESURA-ISLAND desktop integration test — 2026-08-10
+
+Build:
+  swift build                                      PASS
+  ./scripts/build-app.sh 0.1.0                    PASS
+  Info.plist lint + ad-hoc codesign verification  PASS
+
+Codex Desktop:
+  Native source: ~/.codex/sessions/**/*.jsonl
+  Watcher start: 18:33:41
+  UserPromptSubmit observed from a live desktop task.
+  PreToolUse and PostToolUse observed repeatedly from live desktop tasks.
+  Expanded GUI showed CODEX (2), real project names, prompt preview, model,
+  thinking/tool status, elapsed time, and app jump target.
+
+Hermes Desktop:
+  Native source: ~/.hermes/state.db (SQLite WAL)
+  Filter: sessions.source = 'desktop'
+  Test prompt submitted in Hermes.app at 18:34:36:
+    Reply with exactly: Hermes Desktop detected.
+  UserPromptSubmit observed by CAESURA-ISLAND at 18:34:36.
+  Hermes final response:
+    Hermes Desktop detected.
+  Stop observed by CAESURA-ISLAND at 18:35:08.
+  Expanded GUI showed HERMES (1), prompt, model, Idle state, and final response.
+
+Computer-use result:
+  PASS — both desktop providers appeared simultaneously in the expanded island.
+  No crash, hang, or focus steal occurred.
+
+Scope note:
+  Desktop session monitoring is read-only. Provider-owned permission dialogs
+  remain in Codex Desktop and Hermes Desktop. CLI hook permission requests can
+  still be answered from CAESURA-ISLAND.

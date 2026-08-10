@@ -2,6 +2,8 @@
 
 CAESURA-ISLAND is a personal macOS notch app for monitoring AI coding agents. It receives agent hook events through a small bridge, shows live session state in a borderless notch panel, surfaces supported permission requests, and jumps back to the originating terminal or app.
 
+Codex Desktop and Hermes Desktop are monitored directly from their local session stores. Their desktop integrations do not require launching either provider from a terminal.
+
 Supported agents:
 
 - Codex
@@ -55,9 +57,14 @@ Agent hooks
     -> /tmp/caesura-island.sock
     -> session store
     -> SwiftUI/AppKit notch window
+
+Codex Desktop ~/.codex/sessions/*.jsonl ─┐
+Hermes Desktop ~/.hermes/state.db ───────┴─> canonical events -> session store
 ```
 
 The bridge normalizes provider events into the app's canonical event set. The app preserves the existing session/process sweep, permission and question queue, terminal jumper, rate-limit polling, sound engine, theme tokens, and mascot rendering engine.
+
+Desktop monitoring is read-only. CAESURA-ISLAND shows prompts, working/tool state, and final responses, while permission decisions remain inside Codex Desktop or Hermes Desktop. CLI permission requests continue to use the bridge and can be answered from the notch.
 
 Runtime state is stored under `~/.caesura-island/`:
 
