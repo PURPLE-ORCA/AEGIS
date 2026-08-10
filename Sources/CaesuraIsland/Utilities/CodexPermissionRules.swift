@@ -1,6 +1,6 @@
 import Foundation
 
-/// Codex doesn't support Claude's `updatedPermissions` shape — sending it back
+/// Codex doesn't support the canonical `updatedPermissions` shape — sending it back
 /// produces an `unsupported updatedPermissions` error. The Codex-native way to
 /// persist an "always allow" decision is to append a `prefix_rule(...)` block
 /// to `~/.codex/rules/caesuraisland.rules`. Codex consults this file on every

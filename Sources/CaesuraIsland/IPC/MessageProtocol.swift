@@ -19,19 +19,14 @@ struct BridgeMessage: Codable {
     let toolOldString: String?
     let toolNewString: String?
     let sessionTitle: String?
-    /// Identifier of the AI provider that fired this hook (e.g. "claude", "codex").
-    /// Defaults to "claude" if the bridge doesn't stamp this field.
+    /// Identifier of the AI provider that fired this hook.
+    /// Defaults to "codex" if the bridge doesn't stamp this field.
     let source: String?
     /// PID of the agent process that spawned the bridge (getppid in the bridge).
     /// Used to detect when an agent exits without firing SessionEnd.
     let agentPid: Int?
-    /// Model name the agent is using ("claude-sonnet-4-7", "gpt-5", etc.).
-    /// Captured straight from the hook payload's `model` field — both
-    /// Claude and Codex emit it.
+    /// Model name the agent is using, captured from the hook payload.
     let model: String?
-    /// Claude multi-profile label, derived by the bridge from a custom
-    /// CLAUDE_CONFIG_DIR (e.g. ~/.claude-work → "work"). nil for the default.
-    let profile: String?
 
     var terminalInfo: TerminalInfo? {
         guard let env else { return nil }
@@ -67,12 +62,11 @@ struct BridgeMessage: Codable {
         case source
         case agentPid = "agent_pid"
         case model
-        case profile
     }
 }
 
 /// Response sent back to the bridge (for permission requests).
-/// Must match Claude Code's expected hook output format.
+/// Canonical permission response returned through the bridge.
 struct BridgeResponse: Codable {
     let hookSpecificOutput: HookSpecificOutput
 
@@ -124,7 +118,7 @@ struct BridgeResponse: Codable {
         return try? JSONSerialization.data(withJSONObject: response)
     }
 
-    /// Defer to terminal — Claude Code will fall back to its default prompt in the terminal.
+    /// Defer to the provider's own prompt in the terminal or app.
     /// Used when user clicks "Answer in terminal" on a question.
     static func deferToTerminal() -> Data? {
         let response: [String: Any] = [
@@ -132,50 +126,6 @@ struct BridgeResponse: Codable {
                 "hookEventName": "PermissionRequest",
                 "decision": [
                     "behavior": "ask",
-                ] as [String: Any],
-            ] as [String: Any],
-        ]
-        return try? JSONSerialization.data(withJSONObject: response)
-    }
-
-    /// Allow + switch the session into `mode` (setMode). Used to exit plan mode:
-    /// a plain allow keeps the session in `plan`, so approving ExitPlanMode must
-    /// carry the target mode ("default" = approve / "acceptEdits" = auto-run).
-    /// `bypassPermissions` is startup-only and won't take here.
-    static func allowWithMode(_ mode: String) -> Data? {
-        let response: [String: Any] = [
-            "hookSpecificOutput": [
-                "hookEventName": "PermissionRequest",
-                "decision": [
-                    "behavior": "allow",
-                    "updatedPermissions": [
-                        [
-                            "type": "setMode",
-                            "mode": mode,
-                            "destination": "session",
-                        ] as [String: Any],
-                    ],
-                ] as [String: Any],
-            ] as [String: Any],
-        ]
-        return try? JSONSerialization.data(withJSONObject: response)
-    }
-
-    /// Bypass all permissions for the rest of this session using dontAsk mode
-    /// (bypassPermissions can only be set at session startup, not mid-session)
-    static func bypass() -> Data? {
-        let response: [String: Any] = [
-            "hookSpecificOutput": [
-                "hookEventName": "PermissionRequest",
-                "decision": [
-                    "behavior": "allow",
-                    "updatedPermissions": [
-                        [
-                            "type": "setMode",
-                            "mode": "dontAsk",
-                            "destination": "session",
-                        ] as [String: Any],
-                    ],
                 ] as [String: Any],
             ] as [String: Any],
         ]

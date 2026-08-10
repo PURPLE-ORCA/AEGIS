@@ -54,7 +54,7 @@ struct NotchContentView: View {
             if hovering {
                 viewModel.mouseEntered()
                 if case .collapsed = viewModel.state {
-                    // Surface a pending plan/permission/question first, else expand
+                    // Surface a pending permission/question first, else expand
                     if !showNextPending() { viewModel.expand() }
                 }
             } else {
@@ -63,19 +63,15 @@ struct NotchContentView: View {
         }
     }
 
-    /// Surface the next queued decision (oldest-first): a plan routes to PlanView,
-    /// a regular permission to PermissionView, otherwise a question. Returns false
+    /// Surface the next queued decision (oldest-first): a permission routes to
+    /// PermissionView, otherwise a question. Returns false
     /// when nothing is pending so callers can fall back (collapse / expand).
     @discardableResult
     private func showNextPending() -> Bool {
         let store = sessionStore
         if let next = store.nextPendingPermission() {
-            if store.sessions[next]?.pendingPermission?.isPlan == true {
-                viewModel.showPlan(sessionId: next)
-            } else {
-                let h = store.sessions[next].map { NotchViewModel.permissionHeight(for: $0) }
-                viewModel.showPermission(sessionId: next, contentHeight: h)
-            }
+            let h = store.sessions[next].map { NotchViewModel.permissionHeight(for: $0) }
+            viewModel.showPermission(sessionId: next, contentHeight: h)
             return true
         } else if let next = store.nextPendingQuestion() {
             viewModel.showQuestion(sessionId: next)
@@ -143,24 +139,6 @@ struct NotchContentView: View {
                             viewModel.dynamicPermissionHeight = NotchViewModel.permissionHeight(for: s)
                         }
                     }
-                )
-            } else {
-                CollapsedNotchView(sessionStore: sessionStore, rateLimitStore: rateLimitStore)
-            }
-
-        case .plan(let sessionId):
-            if let session = sessionStore.sessions[sessionId],
-               let pending = session.pendingPermission, pending.isPlan {
-                PlanView(
-                    session: session,
-                    permission: pending,
-                    onRespond: { action in
-                        onPermissionRespond(sessionId, action)
-                        if !showNextPending() { viewModel.dismissPlan() }
-                    },
-                    rateLimitStore: rateLimitStore,
-                    settingsStore: settingsStore,
-                    onOpenSettings: onOpenSettings
                 )
             } else {
                 CollapsedNotchView(sessionStore: sessionStore, rateLimitStore: rateLimitStore)

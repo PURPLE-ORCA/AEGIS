@@ -17,14 +17,14 @@ struct SessionListView: View {
 
     /// Which provider's rate limits to render in the bar. When a filter is
     /// active we follow it; otherwise we show the provider whose session most
-    /// recently saw activity (or fall back to Claude if there are no sessions).
+    /// recently saw activity (or fall back to Codex if there are no sessions).
     private var rateLimitProvider: AIProvider {
         if let sel = selectedProvider { return sel }
         if let latest = sessionStore.activeSessions.values
             .sorted(by: { $0.lastActivityAt > $1.lastActivityAt }).first {
             return latest.provider
         }
-        return .claude
+        return .codex
     }
 
     /// Tapping the rate limit bar cycles selectedProvider through every

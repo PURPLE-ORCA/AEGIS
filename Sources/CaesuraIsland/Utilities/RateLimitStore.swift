@@ -44,10 +44,7 @@ struct ProviderUsage {
     static let empty = ProviderUsage(fiveHour: nil, sevenDay: nil, plan: nil, error: nil)
 }
 
-/// Fetches usage for every supported provider in parallel on a 5-minute timer
-/// and publishes the latest snapshot for the UI. Replaces the old statusline
-/// approach (Claude only, stale when Claude wasn't running) with live HTTP
-/// fetches that work whether sessions are open or not.
+/// Fetches Codex usage on a five-minute timer and publishes the latest snapshot.
 @MainActor
 final class RateLimitStore: ObservableObject {
     @Published private(set) var usage: [String: ProviderUsage] = [:]
@@ -80,13 +77,8 @@ final class RateLimitStore: ObservableObject {
         usage[provider.id]?.sevenDay
     }
 
-    /// Run all providers' fetchers concurrently and store the resulting snapshots.
     func refresh() async {
-        async let claude = UsageFetcher.fetchClaude()
-        async let codex  = UsageFetcher.fetchCodex()
-        let (c, cx) = await (claude, codex)
-        usage["claude"] = Self.snapshot(from: c)
-        usage["codex"]  = Self.snapshot(from: cx)
+        usage["codex"] = Self.snapshot(from: await UsageFetcher.fetchCodex())
     }
 
     private static func snapshot(from app: AppUsage) -> ProviderUsage {

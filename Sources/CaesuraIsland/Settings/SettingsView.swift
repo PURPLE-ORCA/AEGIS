@@ -45,7 +45,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .appearance:
             return "Pick the visual theme for the notch windows."
         case .integrations:
-            return "Auto-install hooks for Claude Code and OpenAI Codex."
+            return "Manage hooks for the four supported agents."
         case .sound:
             return "Per-event chimes, master volume, and custom sound packs."
         case .about:
@@ -297,7 +297,7 @@ struct SettingsView: View {
         } header: {
             Text("Review every action")
         } footer: {
-            Text("Gemini, Cursor, Copilot, Kimi, AntiGravity, and Hermes have no selective permission prompt — only blanket \"before every tool\" hooks. Turn one on to pause that agent on every tool call for in-notch approval. Off by default: when on you'll be prompted a lot, and if you don't answer before the hook times out (~5 min) the action proceeds. (Hermes also keeps its own prompt for dangerous commands.)")
+            Text("AntiGravity and Hermes expose blanket pre-tool hooks rather than selective permission prompts. Turn one on to pause every tool call for in-notch approval. Off by default; unanswered requests time out after about five minutes. Hermes also keeps its own prompt for dangerous commands.")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.leading)
@@ -468,94 +468,16 @@ struct SettingsView: View {
     private var integrationsForm: some View {
         Section {
             IntegrationRow(
-                title: "Claude Code",
-                subtitle: "Writes hooks to ~/.claude/settings.json.",
-                accent: Color(red: 0.85, green: 0.47, blue: 0.34),
-                install: { HookInstaller.install() }
-            )
-            IntegrationRow(
                 title: "Codex",
                 subtitle: "Writes ~/.codex/hooks.json and toggles [features].hooks = true.",
                 accent: Color(red: 0.88, green: 0.88, blue: 0.88),
                 install: { CodexInstaller.install() }
             )
             IntegrationRow(
-                title: "Gemini",
-                subtitle: "Writes hooks to ~/.gemini/settings.json.",
-                accent: Color(red: 0.278, green: 0.588, blue: 0.894),
-                install: { ProviderInstaller.installSource("gemini") }
-            )
-            IntegrationRow(
-                title: "Qwen Code",
-                subtitle: "Writes hooks to ~/.qwen/settings.json.",
-                accent: Color(red: 0.486, green: 0.228, blue: 0.929),
-                install: { ProviderInstaller.installSource("qwen") }
-            )
-            IntegrationRow(
-                title: "Qoder",
-                subtitle: "Writes hooks to ~/.qoder/settings.json.",
-                accent: Color(red: 0.165, green: 0.859, blue: 0.361),
-                install: { ProviderInstaller.installSource("qoder") }
-            )
-            IntegrationRow(
-                title: "Factory",
-                subtitle: "Writes hooks to ~/.factory/settings.json (droid CLI).",
-                accent: Color(red: 0.835, green: 0.416, blue: 0.149),
-                install: { ProviderInstaller.installSource("droid") }
-            )
-            IntegrationRow(
-                title: "CodeBuddy",
-                subtitle: "Writes hooks to ~/.codebuddy/settings.json.",
-                accent: Color(red: 0.424, green: 0.302, blue: 1.000),
-                install: { ProviderInstaller.installSource("codebuddy") }
-            )
-            IntegrationRow(
-                title: "Cursor",
-                subtitle: "Writes hooks to ~/.cursor/hooks.json.",
-                accent: Color(red: 0.60, green: 0.58, blue: 0.54),
-                install: { ProviderInstaller.installSource("cursor") }
-            )
-            IntegrationRow(
-                title: "Copilot",
-                subtitle: "Writes hooks to ~/.copilot/hooks/caesuraisland.json.",
-                accent: Color(red: 0.800, green: 0.200, blue: 0.400),
-                install: { ProviderInstaller.installSource("copilot") }
-            )
-            IntegrationRow(
-                title: "Kimi",
-                subtitle: "Appends [[hooks]] blocks to ~/.kimi/config.toml.",
-                accent: Color(red: 0.29, green: 0.56, blue: 1.000),
-                install: { ProviderInstaller.installSource("kimi") }
-            )
-            IntegrationRow(
                 title: "OpenCode",
                 subtitle: "Installs a plugin in ~/.config/opencode and registers it.",
                 accent: Color(red: 0.62, green: 0.62, blue: 0.64),
                 install: { ProviderInstaller.installSource("opencode") }
-            )
-            IntegrationRow(
-                title: "Cline",
-                subtitle: "Writes hook scripts to ~/Documents/Cline/Hooks.",
-                accent: Color(red: 0.00, green: 0.70, blue: 0.49),
-                install: { ProviderInstaller.installSource("cline") }
-            )
-            IntegrationRow(
-                title: "Kiro",
-                subtitle: "Writes an agent to ~/.kiro/agents/caesuraisland.json (launch: kiro --agent caesuraisland).",
-                accent: Color(red: 0.49, green: 0.36, blue: 1.00),
-                install: { ProviderInstaller.installSource("kiro") }
-            )
-            IntegrationRow(
-                title: "Pi",
-                subtitle: "Installs a TypeScript extension in ~/.pi/agent/extensions.",
-                accent: Color(red: 0.96, green: 0.69, blue: 0.13),
-                install: { ProviderInstaller.installSource("pi") }
-            )
-            IntegrationRow(
-                title: "Oh My Pi",
-                subtitle: "Installs a TypeScript extension in ~/.omp/agent/extensions.",
-                accent: Color(red: 0.13, green: 0.78, blue: 0.74),
-                install: { ProviderInstaller.installSource("omp") }
             )
             IntegrationRow(
                 title: "AntiGravity",

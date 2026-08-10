@@ -2,17 +2,17 @@ import Foundation
 import AppKit
 
 // MARK: - CAESURA-ISLAND Bridge
-// Reads hook JSON from a coding agent (Claude Code, Codex, etc.) via stdin,
+// Reads hook JSON from a supported coding agent via stdin,
 // maps to CAESURA-ISLAND format, sends to the app via Unix domain socket.
 // For PermissionRequest: waits for response and outputs to stdout.
 //
-// Usage: caesura-island-bridge [--source <id>]   (default --source claude)
+// Usage: caesura-island-bridge [--source <id>]   (default --source codex)
 
 let socketPath = "/tmp/caesura-island.sock"
 
 // Parse CLI args: optional `--source <id>` flag identifies which AI agent
-// the hook came from. Defaults to "claude" for backward compatibility.
-var providerSource = "claude"
+// the hook came from. Codex is the default for direct bridge invocations.
+var providerSource = "codex"
 var eventTag: String? = nil
 do {
     var i = 1
@@ -22,8 +22,7 @@ do {
             providerSource = args[i + 1]
             i += 2
         } else if args[i] == "--event" && i + 1 < args.count {
-            // Cursor/Copilot don't include the event name in stdin — they pass
-            // it here. Forwarded automatically by the launcher's "$@".
+            // Providers whose stdin omits the event name pass it here.
             eventTag = args[i + 1]
             i += 2
         } else {
@@ -80,7 +79,7 @@ if let p = try? JSONSerialization.jsonObject(with: inputData) as? [String: Any] 
 }
 
 // Determine the raw event name. Most CLIs put it in "hook_event_name";
-// Cursor/Copilot omit it and pass it via --event. Then normalize each
+// Some providers omit it and pass it via --event. Then normalize each
 // provider's event vocabulary to OUR canonical set so SessionStore — which
 // only understands the canonical names — works unchanged.
 let rawEvent = payload["hook_event_name"] as? String
@@ -89,49 +88,10 @@ let rawEvent = payload["hook_event_name"] as? String
     ?? eventTag
     ?? "Notification"
 
-// Per-source event-name normalization. Claude-Code forks (qwen/qoder/droid/
-// codebuddy) already speak canonical names → identity (not listed).
+// Per-source event-name normalization. Codex and OpenCode already emit the
+// canonical vocabulary.
 let eventNormalization: [String: [String: String]] = [
-    "gemini": [
-        "BeforeTool": "PreToolUse", "AfterTool": "PostToolUse",
-        // Gemini has no Stop/UserPromptSubmit — drive status off the agent turn.
-        "BeforeAgent": "UserPromptSubmit", "AfterAgent": "Stop",
-    ],
-    "cursor": [
-        "beforeSubmitPrompt": "UserPromptSubmit",
-        "beforeShellExecution": "PreToolUse", "afterShellExecution": "PostToolUse",
-        "beforeReadFile": "PreToolUse", "afterFileEdit": "PostToolUse",
-        "beforeMCPExecution": "PreToolUse", "afterMCPExecution": "PostToolUse",
-        // Cursor fires BOTH afterAgentResponse (carries the reply text) and
-        // stop at the end of a turn. Map only afterAgentResponse → Stop so the
-        // Finished card gets the reply AND completion fires once, not twice;
-        // drop the redundant stop.
-        "afterAgentThought": "Notification", "afterAgentResponse": "Stop", "stop": "skip",
-    ],
-    "copilot": [
-        "sessionStart": "SessionStart", "sessionEnd": "SessionEnd",
-        "userPromptSubmitted": "UserPromptSubmit",
-        "preToolUse": "PreToolUse", "postToolUse": "PostToolUse",
-        "agentStop": "Stop",          // the real "agent finished" event
-        "errorOccurred": "Notification",
-    ],
-    "qwen": ["PostToolUseFailure": "skip"],
-    "cline": [
-        // Cline's Task* lifecycle → our session/turn model. No SessionEnd
-        // (process sweep handles teardown); no PermissionRequest (Cline asks
-        // in the IDE). Cancel is treated as a turn end so the card settles.
-        "TaskStart": "SessionStart", "TaskResume": "UserPromptSubmit",
-        "TaskComplete": "Stop", "TaskCancel": "Stop",
-    ],
-    // Kiro — camelCase; no SessionEnd (process sweep handles teardown).
-    "kiro": [
-        "agentSpawn": "SessionStart", "userPromptSubmit": "UserPromptSubmit",
-        "preToolUse": "PreToolUse", "postToolUse": "PostToolUse", "stop": "Stop",
-    ],
-    // Pi / Oh My Pi extensions emit canonical names already; just drop PostCompact.
-    "pi":  ["PostCompact": "skip"],
-    "omp": ["PostCompact": "skip"],
-    // Nous Research Hermes (config.yaml hooks). The TURN cycle is driven by the
+    // Hermes' turn cycle is driven by the
     // LLM-call events: pre_llm_call carries `user_message` (prompt → thinking),
     // post_llm_call carries `assistant_response` (reply → finished, card STAYS).
     // on_session_start just creates the card; on_session_end is ignored (the PID
@@ -148,19 +108,9 @@ let eventNormalization: [String: [String: String]] = [
     "antigravity": [
         "PreInvocation": "UserPromptSubmit", "PostInvocation": "skip",
     ],
-    // kimi & opencode emit canonical names already → identity (not listed).
 ]
-// Strict-approval gate. Gemini/Cursor/Copilot/Kimi don't have a selective
-// permission event — only blanket "before every tool" hooks. When the user
-// opts in (per provider, via ~/.caesura-island/config.json written by Settings),
-// we turn those `before*` events into BLOCKING permission prompts: the bridge
-// shows the notch UI and translates the decision back to the tool's own shape.
+// Strict-approval gate for providers with blanket pre-tool hooks.
 let permissionGateEvents: [String: Set<String>] = [
-    "gemini": ["BeforeTool"],
-    "cursor": ["beforeShellExecution", "beforeMCPExecution"],
-    "copilot": ["preToolUse"],
-    "kimi": ["PreToolUse"],
-    "qoder": ["PreToolUse"],       // Qoder has no PermissionRequest; gate in PreToolUse
     "antigravity": ["PreToolUse"],
     "hermes": ["pre_tool_call"],
 ]
@@ -182,10 +132,10 @@ let isStrictGate = (permissionGateEvents[providerSource]?.contains(rawEvent) ?? 
 let hookEvent = isStrictGate
     ? "PermissionRequest"
     : (eventNormalization[providerSource]?[rawEvent] ?? rawEvent)
-// Events we don't track (e.g. Qwen's PostToolUseFailure) — drop silently.
+// Events outside the canonical model are dropped silently.
 if hookEvent == "skip" { exit(0) }
 
-// Some CLIs use camelCase "sessionId" (Copilot) or omit it entirely. Fall
+// Some CLIs use camelCase identifiers or omit one entirely. Fall
 // back to a STABLE per-process id — a random UUID would spawn a new session
 // card on every event.
 let sessionId = (payload["session_id"] as? String)
@@ -200,18 +150,9 @@ let cwd = (payload["cwd"] as? String)
     ?? (agArgs?["Cwd"] as? String)
     ?? (payload["workspacePaths"] as? [String])?.first
 
-// Extract tool name (Copilot uses camelCase "toolName"). For Cursor's strict
-// gate, shell/MCP events carry no tool_name — synthesize a readable label.
-func strictGateLabel(_ event: String) -> String? {
-    switch event {
-    case "beforeShellExecution": return "Shell"
-    case "beforeMCPExecution":   return "MCP"
-    default:                     return nil
-    }
-}
+// Extract the tool name from the provider payload.
 let toolName = payload["tool_name"] as? String ?? payload["toolName"] as? String
-    ?? (agToolCall?["name"] as? String)              // AntiGravity
-    ?? (isStrictGate ? strictGateLabel(rawEvent) : nil)
+    ?? (agToolCall?["name"] as? String)
 
 // Extract tool input as a string summary, plus separate content/path for Write/Edit
 var toolInputStr: String? = nil
@@ -219,14 +160,7 @@ var toolContent: String? = nil
 var toolFilePath: String? = nil
 var toolOldString: String? = nil
 var toolNewString: String? = nil
-// Copilot encodes tool args as a JSON-encoded STRING under "toolArgs".
-// Parse it so the extraction below sees a normal object.
 var normalizedToolInput = payload["tool_input"] as? [String: Any]
-if normalizedToolInput == nil, let argsStr = payload["toolArgs"] as? String,
-   let argsData = argsStr.data(using: .utf8),
-   let parsed = try? JSONSerialization.jsonObject(with: argsData) as? [String: Any] {
-    normalizedToolInput = parsed
-}
 if let toolInput = normalizedToolInput {
     if let cmd = toolInput["command"] as? String {
         toolInputStr = cmd
@@ -259,8 +193,7 @@ if let toolInput = normalizedToolInput {
 } else if let toolInput = payload["tool_input"] as? String {
     toolInputStr = toolInput
 }
-// Cursor's beforeShellExecution carries the command at the TOP level (not in
-// tool_input) — surface it so the strict-approval card shows what's running.
+// Accept a top-level command when a provider doesn't nest tool input.
 if toolInputStr == nil, let topCommand = payload["command"] as? String {
     toolInputStr = topCommand
 }
@@ -330,8 +263,8 @@ func getParentPid(_ pid: pid_t) -> pid_t {
     return 0
 }
 
-// Extract user/assistant messages directly from Claude Code's payload
-// AntiGravity puts both prompt and reply only in its transcript.jsonl.
+// Extract user and assistant messages. AntiGravity puts both only in its
+// transcript.jsonl.
 let agTranscriptPath = payload["transcriptPath"] as? String ?? payload["transcript_path"] as? String
 
 let userMessage: String? = {
@@ -343,7 +276,6 @@ let userMessage: String? = {
         // Hermes' pre_llm_call carries the prompt as `user_message`, possibly
         // nested under `extra` — check both.
         let hermesExtra = payload["extra"] as? [String: Any]
-        // Claude uses "prompt"; Cursor/others vary.
         return payload["prompt"] as? String ?? payload["query"] as? String
             ?? payload["user_prompt"] as? String ?? payload["message"] as? String
             ?? payload["input"] as? String ?? payload["text"] as? String
@@ -372,63 +304,13 @@ let assistantMessage: String? = {
         // Hermes' post_llm_call carries the reply as `assistant_response`,
         // possibly nested under `extra` — check both.
         let hermesExtra = payload["extra"] as? [String: Any]
-        // Cursor's afterAgentResponse carries the reply in "text"/"message";
-        // Gemini's AfterAgent uses "prompt_response".
         return payload["last_assistant_message"] as? String
-            ?? payload["assistant_message"] as? String           // Codex (top-level)
-            ?? payload["prompt_response"] as? String
+            ?? payload["assistant_message"] as? String
             ?? payload["assistant_response"] as? String          // Hermes (top-level)
             ?? hermesExtra?["assistant_response"] as? String      // Hermes (in extra)
-            ?? payload["text"] as? String ?? payload["message"] as? String
     }
     return nil
 }()
-
-/// Walk the Claude Code transcript backwards to find the most recent
-/// assistant line's `message.model`. Used as a fallback because Claude's
-/// hook payload (unlike Codex's) doesn't include the model directly.
-func lastModelFromTranscript(_ path: String) -> String? {
-    guard let data = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-    for line in data.components(separatedBy: "\n").reversed() {
-        guard !line.isEmpty,
-              let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-              json["type"] as? String == "assistant",
-              let message = json["message"] as? [String: Any],
-              let model = message["model"] as? String,
-              !model.isEmpty
-        else { continue }
-        return model
-    }
-    return nil
-}
-
-func lastAssistantFromTranscript(_ path: String) -> String? {
-    guard let data = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-    let lines = data.components(separatedBy: "\n")
-
-    // Walk backwards to find the last assistant message with actual text content
-    for line in lines.reversed() {
-        guard !line.isEmpty,
-              let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-              json["type"] as? String == "assistant",
-              let message = json["message"] as? [String: Any],
-              let content = message["content"] as? [[String: Any]] else { continue }
-
-        // Collect all text blocks from this message (skip tool_use blocks)
-        var texts: [String] = []
-        for c in content {
-            if c["type"] as? String == "text", let text = c["text"] as? String, !text.isEmpty {
-                texts.append(text)
-            }
-        }
-
-        // Only use this message if it has actual text (not just tool_use)
-        if !texts.isEmpty {
-            return String(texts.joined(separator: "\n").prefix(500))
-        }
-    }
-    return nil
-}
 
 /// Codex stores a per-session rollout transcript at
 /// ~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<sessionId>.jsonl. Find it by the
@@ -526,18 +408,6 @@ if let toolNewString { message["tool_new_string"] = toolNewString }
 // the session can be removed from the notch.
 message["agent_pid"] = Int(getppid())
 if !envVars.isEmpty { message["_env"] = envVars }
-// Claude multi-profile: when launched with a custom CLAUDE_CONFIG_DIR (e.g.
-// ~/.claude-work), tag the session with the profile name ("work") so the notch
-// can tell profiles apart. The hook subprocess inherits CLAUDE_CONFIG_DIR.
-if providerSource == "claude",
-   let cfgDir = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"], !cfgDir.isEmpty {
-    var base = (cfgDir as NSString).lastPathComponent
-    if base != ".claude" {
-        if base.hasPrefix(".claude-") { base = String(base.dropFirst(8)) }   // ".claude-".count
-        else if base.hasPrefix(".") { base = String(base.dropFirst()) }
-        if !base.isEmpty { message["profile"] = base }
-    }
-}
 if let userMessage { message["user_message"] = userMessage }
 if let assistantMessage { message["assistant_message"] = assistantMessage }
 if let permMode = payload["permission_mode"] as? String { message["permission_mode"] = permMode }
@@ -548,13 +418,8 @@ if let effort = payload["effort"] as? [String: Any], let level = effort["level"]
     message["effort_level"] = level
 }
 if let durationMs = payload["duration_ms"] as? Int { message["duration_ms"] = durationMs }
-// Codex emits `model` at the top level. Claude doesn't — we have to
-// dig it out of the transcript file (each assistant line carries
-// `message.model`). Try top-level first, fall back to transcript.
+// Codex emits `model` at the top level.
 if let model = payload["model"] as? String, !model.isEmpty {
-    message["model"] = model
-} else if let transcriptPath = payload["transcript_path"] as? String,
-          let model = lastModelFromTranscript(transcriptPath) {
     message["model"] = model
 }
 
@@ -662,10 +527,9 @@ if hookEvent == "PermissionRequest" {
         return (UInt32(p[0]) << 24) | (UInt32(p[1]) << 16) | (UInt32(p[2]) << 8) | UInt32(p[3])
     }
     if len > 0, len <= 4 * 1024 * 1024, let body = readExactly(fd: fd, count: Int(len)) {
-        // For a strict-approval gate, the app replies in OUR (Claude) shape;
+        // For a strict-approval gate, the app replies in the canonical shape;
         // translate it to the tool's native permission response before writing
-        // to stdout. Real PermissionRequest providers (Claude/Codex/Qwen/Qoder/
-        // OpenCode) already speak this shape, so pass their response through.
+        // to stdout. Codex and OpenCode already speak this shape.
         let out = isStrictGate ? translateStrictDecision(source: providerSource, appResponse: body) : body
         FileHandle.standardOutput.write(out)
         try? FileHandle.standardOutput.synchronize()
@@ -675,7 +539,7 @@ if hookEvent == "PermissionRequest" {
 close(fd)
 exit(0)
 
-/// Maps the app's Claude-shaped decision → the gated tool's native response.
+/// Maps the app's canonical decision to the gated tool's native response.
 /// Default to "allow" if anything is unparseable (matches each tool's fail-open
 /// behavior; better than silently denying the user's work).
 func translateStrictDecision(source: String, appResponse: Data) -> Data {
@@ -687,34 +551,17 @@ func translateStrictDecision(source: String, appResponse: Data) -> Data {
         behavior = b   // "allow" | "deny" | "ask"
     }
     let deny = behavior == "deny"
-    let ask = behavior == "ask"
     let reason = "Denied in CAESURA-ISLAND"
     let json: String
     switch source {
-    case "gemini":
-        // Gemini has no "ask" — treat it as allow.
-        json = deny ? "{\"decision\":\"deny\",\"reason\":\"\(reason)\"}" : "{\"decision\":\"allow\"}"
-    case "cursor":
-        if deny { json = "{\"permission\":\"deny\",\"agent_message\":\"\(reason)\"}" }
-        else if ask { json = "{\"permission\":\"ask\"}" }
-        else { json = "{\"permission\":\"allow\"}" }
     case "antigravity":
         if deny { json = "{\"decision\":\"deny\",\"reason\":\"\(reason)\"}" }
-        else if ask { json = "{\"decision\":\"ask\"}" }
         else { json = "{\"decision\":\"allow\"}" }
     case "hermes":
         // Hermes pre_tool_call blocks on {"decision":"block"}; anything else
         // (incl. an empty object) lets the tool proceed. No "ask" concept.
         if deny { json = "{\"decision\":\"block\",\"reason\":\"\(reason)\"}" }
         else { json = "{}" }
-    case "copilot":
-        if deny { json = "{\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"\(reason)\"}" }
-        else if ask { json = "{\"permissionDecision\":\"ask\"}" }
-        else { json = "{\"permissionDecision\":\"allow\"}" }
-    case "kimi", "qoder":
-        // Identical Claude-style PreToolUse permissionDecision shape.
-        if deny { json = "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"\(reason)\"}}" }
-        else { json = "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\"}}" }
     default:
         return appResponse
     }

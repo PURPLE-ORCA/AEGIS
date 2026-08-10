@@ -109,7 +109,7 @@ struct OnboardingView: View {
     private var fauxNotchCard: some View {
         let tint = theme.cardHueActive ?? .cyan
         return HStack(spacing: 10) {
-            SessionMascot(status: .thinking, size: 26, provider: .claude)
+            SessionMascot(status: .thinking, size: 26, provider: .codex)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text("caesura-island")
@@ -153,7 +153,7 @@ struct OnboardingView: View {
     private var welcomeStep: some View {
         VStack(spacing: 20) {
             title("Welcome to CAESURA-ISLAND")
-            subtitle("Your MacBook's notch is now mission control for your AI coding agents — Claude Code, Codex, Gemini, Cursor, and more. Approve permissions, answer questions, and track usage without leaving your editor.")
+            subtitle("Your MacBook's notch is now mission control for Codex, Hermes, OpenCode, and AntiGravity. Approve permissions, answer questions, and track activity without leaving your editor.")
             primaryButton("Get Started", action: advance)
         }
     }
@@ -278,7 +278,7 @@ struct OnboardingView: View {
                 ZStack {
                     NotchBackground(theme: t, isExpanded: true, cornerRadius: 9)
                     HStack(spacing: 5) {
-                        SessionMascot(status: .thinking, size: 15, provider: .claude)
+                        SessionMascot(status: .thinking, size: 15, provider: .codex)
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .fill(t.cardForeground.opacity(0.45))
                             .frame(width: 30, height: 5)
@@ -579,8 +579,8 @@ struct WhatsNewView: View {
               title: "New theme: Web-Slinger",
               detail: "Midnight and suit red, webbing spun into the corners, and a masked spider that abseils in on a thread — Settings → Appearance."),
         .init(symbol: "sparkles", tint: Color(red: 0.62, green: 0.42, blue: 1.0),
-              title: "17 coding agents, one notch",
-              detail: "Claude, Codex, Gemini, Cursor, Copilot, Kiro, Pi, Qwen, Qoder, Factory, CodeBuddy, Kimi, OpenCode, Cline & more — side by side."),
+              title: "Four coding agents, one notch",
+              detail: "Codex, Hermes, OpenCode, and AntiGravity stay visible side by side."),
         .init(symbol: "face.smiling", tint: Color(red: 0.42, green: 0.95, blue: 0.75),
               title: "A mascot for everyone",
               detail: "Every agent gets its own animated pixel mascot and logo, themed to its brand."),
@@ -589,10 +589,10 @@ struct WhatsNewView: View {
               detail: "Approve, deny, or answer questions right in the notch — with the buttons each tool actually supports."),
         .init(symbol: "lock.shield", tint: Color(red: 0.37, green: 0.78, blue: 1.0),
               title: "“Review every action” mode",
-              detail: "Optional strict approval for agents without a native prompt (Gemini, Cursor, Copilot, Kimi, AntiGravity) — Settings → General."),
-        .init(symbol: "checklist", tint: Color(red: 0.55, green: 0.70, blue: 0.98),
-              title: "Plan mode, beautifully rendered",
-              detail: "Claude's plans show as formatted markdown in the notch — approve into ⏵⏵ auto mode, approve & review edits manually, keep planning, or answer in terminal."),
+              detail: "Optional strict approval for Hermes and AntiGravity — Settings → General."),
+        .init(symbol: "arrow.up.right.square.fill", tint: Color(red: 0.55, green: 0.70, blue: 0.98),
+              title: "Questions stay in view",
+              detail: "Codex and Hermes questions appear in the notch with a direct jump back to the right terminal or app."),
     ]
 
     var body: some View {

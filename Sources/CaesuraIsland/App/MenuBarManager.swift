@@ -156,10 +156,7 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
     }
 
     @objc private func installHooks() {
-        // Re-run the SAME full set the app installs on launch — Claude, Codex,
-        // and all the descriptor-driven providers. (Previously this only did
-        // Claude + Codex, silently skipping the other 15.)
-        _ = HookInstaller.install()
+        // Re-run the same supported-provider installers used at launch.
         _ = CodexInstaller.install()
         _ = ProviderInstaller.installAll()
 

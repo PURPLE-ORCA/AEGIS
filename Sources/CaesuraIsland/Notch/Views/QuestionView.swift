@@ -100,18 +100,12 @@ struct QuestionView: View {
                 // own terminal/app. Hide the Submit button (which would silently
                 // discard the user's answer — issue #25) and relabel the defer
                 // button to make the intent clear.
-                if session.source == "codex" || session.source == "hermes"
-                    || session.source == "omp" || session.source == "pi"
-                    || session.source == "qwen" {
-                    // Qwen's `ask_user_question` only takes answers from its own
-                    // CLI dialog (no hook injection) — so just redirect to the
-                    // terminal. Codex/Hermes/Pi surface in their own app.
-                    let isQwen = session.source == "qwen"
+                if session.source == "codex" || session.source == "hermes" {
                     Button(action: onDeferToTerminal) {
                         HStack(spacing: 7) {
-                            Image(systemName: isQwen ? "terminal" : "arrow.up.right.square.fill")
+                            Image(systemName: "arrow.up.right.square.fill")
                                 .font(.system(size: 12))
-                            Text(isQwen ? "Answer in terminal" : "Open \(session.provider.displayName) to answer")
+                            Text("Open \(session.provider.displayName) to answer")
                                 .font(theme.font(size: 12, weight: .bold))
                         }
                         .foregroundColor(.black)
@@ -267,8 +261,7 @@ struct QuestionView: View {
         }
         // Build a structured per-question dict — no delimiter is needed and
         // user input containing `|` or `,` survives intact (issue #26).
-        // Claude's documented multi-select format is comma-no-space, so we
-        // use "," (not ", ") to match.
+        // Provider question payloads expect comma-joined multi-select values.
         var answers: [String: String] = [:]
         for q in question.questions {
             let custom = (customAnswers[q.id] ?? "").trimmingCharacters(in: .whitespaces)

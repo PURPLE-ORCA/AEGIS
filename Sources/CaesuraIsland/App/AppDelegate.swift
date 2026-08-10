@@ -104,10 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Installers are idempotent and pre-stage Codex config even if the user
         // doesn't have Codex installed yet, so it "just works" when they add it.
         Task.detached {
-            _ = HookInstaller.install()
             _ = CodexInstaller.install()
-            // Gemini, Qwen, Qoder, Factory, CodeBuddy, Cursor, Copilot — each
-            // installed only if its config dir is present (Factory bootstraps).
             _ = ProviderInstaller.installAll()
         }
 
@@ -131,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         codexAppServer.start()
 
         // Show the (redesigned) onboarding when the user hasn't seen it yet —
-        // fresh installs AND existing users updating into this version. Gated on
+        // fresh installs and existing users updating into this version. Gated on
         // its own flag so it shows exactly once, never again on later updates.
         if !settingsStore.hasSeenThemeOnboarding {
             showOnboarding()

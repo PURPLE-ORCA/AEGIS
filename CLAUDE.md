@@ -1,280 +1,151 @@
-# CAESURA-ISLAND
+# CAESURA-ISLAND Engineering Guide
 
-A native macOS Swift app that turns your MacBook's notch into a live dashboard for **17 AI coding agents** — Claude Code, Codex, Gemini, Qwen, Qoder, Factory (`droid`), CodeBuddy, Cursor, Copilot, Kimi, OpenCode, Cline, Kiro, Pi, Oh My Pi (`omp`), AntiGravity, and Hermes. Inspired by [Vibe Island](https://vibeisland.app). See [README.md](README.md) for user-facing docs.
+CAESURA-ISLAND is a native macOS notch app for monitoring four AI coding agents: Codex, Hermes, OpenCode, and AntiGravity. It is written in Swift 5.9+ with SwiftUI and AppKit, targets macOS 14+, and builds with Swift Package Manager.
 
 ## Architecture
 
-```
-CAESURA-ISLAND.app/
-├── Contents/
-│   ├── MacOS/caesura-island                ← Main SwiftUI app (menu bar, notch panel)
-│   ├── Helpers/CaesuraIslandBridge         ← CLI bridge: reads hook JSON via stdin; --source / --event flags
-│   └── Info.plist                       ← LSUIElement=true (no dock icon)
-└── ~/.caesura-island/
-    ├── bin/caesura-island-<agent>-bridge   ← one zsh launcher per agent (claude has no suffix; codex/gemini/cursor/…)
-    ├── config.json                      ← {"strictApproval": {provider: bool}} — read by the bridge
-    ├── run/caesura-island.pid
-    ├── cache/rl.json                    ← Cached rate limits per provider
-    ├── debug.log                        ← Runtime debug log
-    └── sound-packs/                     ← User sound packs
+```text
+agent hook
+  -> ~/.caesura-island/bin/caesura-island-<agent>-bridge
+  -> CaesuraIslandBridge --source <agent>
+  -> /tmp/caesura-island.sock
+  -> SocketServer
+  -> SessionStore
+  -> NotchWindowController / SwiftUI views
 ```
 
-**Tech stack**: Swift 5.9+, SwiftUI + AppKit, macOS 14.0+, SPM
+The app target is `CaesuraIsland`. The bridge target is `CaesuraIslandBridge`. On launch, `BridgeInstaller` copies the bridge executable into `~/.caesura-island/bin` and writes one launcher per supported agent. `CodexInstaller` and the descriptor-driven `ProviderInstaller` merge managed hook entries into detected provider configurations.
 
-## Provider Abstraction
+Do not launch the app in an environment where provider configs must remain untouched. First launch may install hooks.
 
-`AIProvider` (Sources/CaesuraIsland/Session/AIProvider.swift) unifies all 17 agents with:
-- `id`, `displayName`, `accentColor`
-- `mascotShape` (per-agent Canvas pixel art — `.crab`, `.box`, `.geminiStar`, `.qwenGem`, `.qoderBlob`, `.factoryBot`, `.buddyCat`, `.cursorBox`, `.copilotBot`, `.kimiMoon`, `.openCodeMark`, `.clineBot`, `.kiroGhost`, `.piGlyph` (Pi + Oh My Pi), `.antigravityOrbit`, `.hermesWing`)
-- `mascotPalette` / `activeMascotPalette`
-- `AIProvider.from(source:)` maps the bridge's `source` field to a provider
-- `AIProvider.all` is the source of truth — adding a provider here flows it everywhere (filter chips, grouping, mascot, accent)
-
-Note: Factory's CLI is `droid`, so its provider `id` is `"droid"` while `displayName` is "Factory".
-Each `Session.source` defaults to "claude" if the bridge doesn't stamp it. **The CLI icon (`ProviderIcon`) loads `Resources/cli-icons/<id>.png`** (so Factory's icon is `droid.png`); README/onboarding mascots are rendered from the same `PixelMascot` code to `docs/mascots/<id>.png`.
-
-**Adding a provider** (see README "Contributing" for the checklist): `AIProvider` entry + `PixelMascot` shape/palette + a `ProviderInstaller.Descriptor` (or new `Format`) + bridge event-normalization (if its vocabulary differs) + `Resources/cli-icons/<id>.png`.
-
-## IPC Flow
-
-1. Agent fires hooks (SessionStart, Stop, PreToolUse, PostToolUse, PermissionRequest, etc.)
-2. Hook calls the appropriate launcher in `~/.caesura-island/bin/` with JSON on stdin (some agents also pass `--event <name>` because their stdin omits the event)
-3. Bridge stamps `source`, captures parent PID via `getppid()`, enriches with terminal env vars (process tree walk for bundle ID), and **normalizes each agent's event vocabulary to our canonical set** (e.g. Gemini `BeforeTool`→`PreToolUse`, Cursor `afterAgentResponse`→`Stop`)
-4. Bridge sends JSON to CAESURA-ISLAND app via Unix socket at `/tmp/caesura-island.sock`
-5. For PermissionRequest: socket connection stays open, app sends response back, bridge outputs to stdout (translating to the agent's native response shape when it's a strict-approval gate — see below)
-
-**Canonical event guard**: `SessionStore.handleMessage` drops any message whose `hookEvent` isn't in the canonical set (`SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `Notification`, `SubagentStart`, `SubagentStop`, `PreCompact`). Every bridge normalizes to these before sending, so a raw camelCase name arriving means a foreign/misconfigured integration sharing the socket — ignore it (this fixed Cursor sessions getting mis-attributed to Claude by a phantom sender).
-
-## Key Hook Payload Fields
-
-- `hook_event_name` — event type (NOT `hook_event`)
-- `prompt` — user's message (UserPromptSubmit). Gemini sends it here too; **AntiGravity sends no prompt field** — the bridge parses the last `<USER_REQUEST>` out of its `transcript.jsonl`.
-- `last_assistant_message` — assistant's response (Stop, Claude). **Gemini** puts the reply in `prompt_response`; **Cursor** in `text`/`message`; **AntiGravity** carries none — the bridge reads the last `MODEL` `PLANNER_RESPONSE` from its transcript.
-- `permission_mode` — "bypassPermissions" means auto-allow (Claude only, set at session startup)
-- `transcript_path` — path to session .jsonl file (AntiGravity uses camelCase `transcriptPath`)
-- `tool_name` — for `AskUserQuestion` (Claude) or `request_user_input` (Codex), show question UI
-- `source` — provider identifier ("claude", "codex", "gemini", "cursor", "droid", …), stamped by the bridge from `--source`
-
-## Permission Modes (Claude, mid-session setMode)
-
-- `bypassPermissions` — **cannot be set mid-session**, only at Claude Code startup via `--dangerously-skip-permissions`. Mid-session setMode requests are silently ignored.
-- `auto` — works mid-session; Claude's amber **"⏵⏵ auto mode on"**. Runs everything without routine prompts, gated by a server-side safety classifier. This is what our **Auto Mode** button (`PermissionAction.autoMode`, the amber `forward.fill` 4th button) + the plan window's "Approve & auto-run" send (`allow` + `setMode auto`). A plain `allow` does NOT change the mode, so the setMode is required. **Not `acceptEdits`** — see below.
-- `acceptEdits` — narrower & separate: the purple **"⏵⏵ accept edits on"**. Auto-accepts file edits + common FS commands (`mkdir`/`mv`/…) but **still prompts for bash/network**. (We don't currently wire a button to this; the plan window's manual "Approve" uses `default`.)
-- `dontAsk` — works mid-session, suppresses *all* future prompts. No longer wired to a Claude button (it was the old "Bypass"); kept as the `BridgeResponse.bypass()` fallback. Codex's "Bypass" uses a broad `prefix_rule` instead.
-- `default` — normal mode, prompts for permissions.
-
-## Codex Permission Persistence
-
-Codex fires the **native `PermissionRequest`** hook event (same Claude-shaped `{decision:{behavior:"allow"|"deny"}}` response — verified docs: developers.openai.com/codex/hooks), so **Allow Once / Deny work directly** through the hook decision, just like Claude.
-
-The catch is **persistence**: Codex's PermissionRequest decides a *single* call only, and `updatedPermissions`/`updatedInput` are **unsupported (fail-closed)** — sending them makes Codex DENY. So for **Allow All / Bypass** we append a `prefix_rule(...)` block to `~/.codex/rules/caesuraisland.rules` (see `CodexPermissionRules.swift`) AND return a plain `behavior: allow` (the rule matches future calls):
-- **Allow All** for Bash: first 3 tokens become the prefix (`git commit -m`)
-- **Allow All** for other tools: prefix is the tool name
-- **Bypass** (broad): first 1 token (Codex rejects empty patterns — true wildcards aren't possible)
-
-(`[features].hooks = true` in config.toml is written defensively — hooks are on by default; the key only *disables* via `false`.)
-
-## Codex `request_user_input` Mirror
-
-Codex's equivalent of Claude's `AskUserQuestion` fires via `PreToolUse` with `tool_name = "request_user_input"` and `tool_input.questions` matching Claude's shape. Codex PreToolUse hooks only support `allow/deny` (no answer substitution), so we:
-
-1. Detect it in `SessionStore.handleMessage` PreToolUse branch
-2. Mirror the question in the notch via `pendingQuestion`
-3. On click, call `TerminalJumper.jump(to: session)` to surface Codex.app — user answers there
-4. PostToolUse clears the pending question via the existing `pendingDismissedExternally` path
-
-## Bridge Terminal Detection
-
-The bridge walks up the process tree (ppid chain) to find the first GUI app with a bundle ID. Fully dynamic — works with any terminal/IDE without hardcoding. iTerm2 gets special treatment (AppleScript tab jump via ITERM_SESSION_ID, but only when TERM_PROGRAM=iTerm.app to avoid inherited env vars).
-
-For Codex.app, the bundle ID is `com.openai.codex`; jump just activates the app (no tab API).
-
-## Permission Response Format (Claude)
-
-```json
-{
-  "hookSpecificOutput": {
-    "hookEventName": "PermissionRequest",
-    "decision": {
-      "behavior": "allow|deny",
-      "updatedPermissions": [
-        {"type": "addRules", "rules": [{"toolName": "Bash"}], "behavior": "allow", "destination": "session"},
-        {"type": "setMode", "mode": "dontAsk", "destination": "session"}
-      ]
-    }
-  }
-}
-```
-
-## Question (AskUserQuestion) Response Format (Claude)
-
-```json
-{
-  "hookSpecificOutput": {
-    "hookEventName": "PermissionRequest",
-    "decision": {
-      "behavior": "allow",
-      "updatedInput": {
-        "questions": [...],
-        "answers": {"What's your API style?": "REST", "Fuel?": "Coffee,Tea"}
-      }
-    }
-  }
-}
-```
-
-## Rate Limits
-
-Live-fetched over HTTP (not statusline anymore):
-- Claude: `api.anthropic.com/api/oauth/usage` with OAuth token from env → keychain → refresh
-- Codex: `chatgpt.com/backend-api/wham/usage` with ChatGPT auth token
-
-`RateLimitStore` keeps a per-provider snapshot, polls every 5 minutes, and `RateLimitBar` renders the active provider's 5h+7d windows. Tap to cycle providers; empty providers are skipped.
-
-## Notch Window
-
-- Layer 27 (same as Vibe Island, just above menu bar at 25)
-- `constrainFrameRect` override to render in notch area
-- `ClickThroughHostingView` with `acceptsFirstMouse` for click-through
-- Collapsed: 280x34 on notch Macs, 280x5 on non-notch Macs (just a hover strip)
-- Expanded: 600x320, Permission: 600x380, Question: 600x480, Finished: 600x380
-
-## States
-
-- **Collapsed** — mascot left, session count right
-- **Expanded** (hover) — rate limit bar + sound toggle + settings gear + filter chips (when ≥2 providers active) + collapsible per-provider section list
-- **Finished** (Stop event) — rate limit bar + session card with scrollable response + Done button, auto-collapses in 3s
-- **Permission** — rate limit bar + tool details + **provider-aware buttons** (`AIProvider.permissionActions`): Claude gets Deny·Allow Once·Allow All·**Auto Mode** (setMode `auto` — amber "⏵⏵ auto mode on"); Codex gets Deny·Allow Once·Allow All·Bypass (broad prefix_rule); Qwen/Qoder/OpenCode drop the 4th; Cursor/Copilot show Deny·Allow Once·"Decide in <app>" (defers via behavior "ask" + jump); everyone else shows Deny·Allow Once. Showing a button the tool can't honor (silent no-op) is worse than omitting it.
-- **Plan** (Claude `ExitPlanMode`) — dedicated `PlanView`: plan markdown rendered via `MarkdownText` (not the raw `{"plan":…}` JSON) + Approve & auto mode (`setMode auto`) · Approve & manual edits (`setMode default`) · Answer in terminal (ask) · Keep planning (deny) — order/labels mirror Claude's own plan prompt. Detected in `SessionStore` (`tool_name == "ExitPlanMode"`, `tool_input` is a JSON *string*), routed via the `.plan` notch state + `.planRequested` event.
-- **Question** — rate limit bar + all questions shown, pill buttons, multi-select (Claude only), Submit All Answers
-
-## Theming
-
-`NotchTheme` (Sources/CaesuraIsland/Notch/NotchTheme.swift) is a pure token set that restyles the notch **chrome only**. Six themes, selectable in **Settings → Appearance** (live preview cards, instant switching):
-
-- `default` — the original look, **unchanged** (load-bearing: existing users must see no difference)
-- `glass` — Liquid Glass (translucent `.ultraThinMaterial` window, capsule controls, sans font)
-- `pixel` — Retro 8-bit (dark cards, colored borders + colored hard offset shadows, square corners, mono)
-- `terminal` — minimal (pure black, hairline chrome, mono)
-- `brutalist` — Neo-Brutalist (vivid light cards + dark text, cream wells, black borders, hard white shadows, sans)
-- `webSlinger` — Web-Slinger (midnight ground, suit-red edge, corner webbing + a masked spider on a thread, rounded font)
-
-**Wiring**
-- Persisted as `SettingsStore.notchThemeID` (UserDefaults, same `@Published`+`didSet` pattern). No pref / first launch → `.default` (the `didSet` only writes on user change, so a fresh install never persists a theme).
-- `NotchContentView` reads `settingsStore.notchThemeID.theme` and injects `.environment(\.notchTheme, theme)`. Every view reads `@Environment(\.notchTheme) private var theme`.
-
-**Invariant — chrome only.** Themes restyle window fill/border, card/box/pill/button shape (radius, stroke width, shadow), and font *design* (mono ↔ sans). They never touch **semantic/brand colors**: provider accents, mascot palettes, status colors (cyan/green/orange/red), tool colors, action-button red/green/purple, rate-limit thresholds. `cardForeground`/`wellForeground` default to `.white`, so the four dark themes render text identically to Default; only `brutalist` opts into dark text on its light cards/cream wells.
-
-**Two sanctioned exceptions, both Web-Slinger, both opt-in via a `nil`-defaulting token:**
-- `masksMascots` draws a mask over Claude's crab and Codex's box (`PixelMascot.drawCrabMask` / `drawBoxMask`). Palettes are untouched — the shell below the hood still carries the status colour.
-- `cardInkError` replaces the error card's fill *and* border. Needed because Web-Slinger's `cardHueActive` is suit red, so a semantically-red error card would be indistinguishable from a thinking one; error becomes the black symbiote card instead. Passed through the new `notchCard(…, ink:)` parameter. **Currently dormant** — nothing in the app ever assigns `SessionStatus.error` (`SessionStore` only sets completed/idle/thinking/toolUse/waitingPermission), so this, the `.error` mascot palette, and the "Error" sound in Settings are all unreachable until tool-failure detection is wired into `PostToolUse`.
-
-**Backdrop layer.** `windowPattern` (`.web`) and `windowCreature` (`.spider`) draw *behind* all content in `NotchBackground`, expanded-only. Both live in `WebSlingerSpider.swift`. The spider's lenses are a status readout driven by `NotchContentView.spiderLens` (error → waiting → thinking → idle) and its legs tick on the crab's `Timer.publish(every: 0.15)` / `animPhase % 4` **only while a session is active** — the notch is a transparent overlay, so an always-on animation costs real CPU (see the v1.4.5 perf fix). The web spins in once on expand and then never redraws.
-
-**Tokens & helpers**
-- `theme.font(size:weight:)` — replaces `.system(…, design: .monospaced)` so a theme swaps the whole app mono↔sans.
-- Drop-in background modifiers: `.notchCard(theme, tint:active:)`, `.notchBox(theme)`, `.notchPill(theme, fill:stroke:base:)`, `.notchButton(theme, fill:stroke:)`. **Shadows apply to the background SHAPE, not `self`** — a hard shadow on the whole view ghosts every glyph of text inside it.
-- `PillCorner` policy (`.asAuthored`/`.square`/`.capsule`/`.cap`) lets each pill keep its authored `base` radius on Default while themes reshape it.
-- `theme.buttonInk(accent)` → per-theme `(fill, stroke, text)` for action buttons.
-- `theme.cardHueActive`/`cardHueIdle` — Pixel/Brutalist tint cards by activity (terracotta/sky-or-gray) instead of status; error→red + waiting→orange stay semantic (remap lives in `SessionCardView.cardTint`).
-- `NotchBorderShape` strokes sides+bottom only (flush top, no seam) for bordered themes. The **collapsed strip is forced pure black in every theme** — only expanded windows are themed (`NotchBackground` branches on `isExpanded`).
-- `SyntaxHighlighter.Theme.light` — dark-on-light palette used when `theme.lightWells` (Brutalist cream wells), passed to `highlight(...)`/`diff(...)`.
-
-**Adding a theme**: add a `NotchThemeID` case + a `NotchTheme` instance in `NotchTheme.all`. It flows everywhere automatically; new windows that use the token modifiers theme for free.
-
-## Permission/Question Queue
-
-- `SessionStore.nextPendingPermission()` and `nextPendingQuestion()` return the next pending session
-- After responding to one, the content view automatically shows the next pending permission/question
-- On hover from collapsed state, if any permission/question is pending, it shows instead of expanding to the session list
-- Permission/question states don't auto-collapse on mouse exit — user must respond
-- `pendingPermission` / `pendingQuestion` cleared **synchronously** in `respondToPermission()` / `respondToQuestion()` before invoking the response closure, so the queue check sees accurate state
-
-## Session Cleanup
-
-Process-based, not time-based. Every 5s, `SessionStore.sweepClosedAgents()` calls `kill(pid, 0)` on each session's `agentPid` — if errno == ESRCH the process is gone and the session is marked completed and removed. This handles Codex's missing SessionEnd reliably while letting long-idle Claude sessions stay open.
-
-## Mascots
-
-All mascots are Canvas-drawn pixel art in `PixelMascot.swift`, authored in a 52-unit-tall logical space. Each agent has its own `MascotShape` + idle/active `MascotPalette`:
-- **Claude** crab, **Codex** terminal box (these two animate their legs/feet directly).
-- **Gemini** star, **Qwen** gem, **Qoder** blob, **Factory** industrial bot, **CodeBuddy** cat, **Cursor** editor box, **Copilot** goggled bot, **Kimi** lunar orb, **OpenCode** monitor box, **Cline** rounded bot.
-- **Kiro** ghost, **Pi**/**Oh My Pi** π-creature (amber/teal, shared `.piGlyph`), **AntiGravity** orbiting planet, **Hermes** winged helmet.
-
-The provider mascots are drawn via the shared `drawShape(...)` helper, which applies a **whole-body bounce** when `animate` is true (the "thinking" liveliness) — no per-mascot leg rig. Color swaps via `mascotPalette` vs `activeMascotPalette`; transient statuses (thinking/error/waiting) override the provider palette so status reads at a glance (`SessionMascot.paletteFor`).
-
-`PixelMascot.masked` (set from `NotchTheme.masksMascots`, so only Web-Slinger) overlays a mask on **crab and box only** — they're the two shapes with a readable pair of eyes to cover. Every other shape ignores the flag: masking a star or a ghost reads as a smudge. The lenses need their dark outline rect underneath; a bare white block reads as a robot eye, not Spider-Man.
-
-The newest mascots (Kiro … Hermes) are brand-original pixel art (no reference gif existed). README/onboarding/What's-New render the live `PixelMascot` code to `docs/mascots/<id>.png`. CLI icons live at `Resources/cli-icons/<id>.png` — real logos for all 17 (Kiro/Oh My Pi supplied by the maintainer).
-
-## Building
+## Build and app bundle
 
 ```bash
-swift build                    # Debug
-swift build -c release         # Release
+swift build
+swift build -c release
+./scripts/build-app.sh
+open build/CAESURA-ISLAND.app
 ```
 
-## Creating DMG
+`scripts/build-app.sh` compiles the release products and assembles a runnable app bundle at `build/CAESURA-ISLAND.app`.
 
-```bash
-brew install create-dmg
-./scripts/build-dmg.sh 1.0.0   # produces build/CAESURA-ISLAND-1.0.0.dmg
-```
+## Provider source of truth
 
-## Development Tips
+`AIProvider.all` contains exactly:
 
-- Process name is `CaesuraIsland` (no space) — use `pkill -9 CaesuraIsland` not `pkill -f "CAESURA-ISLAND"` (the latter matches other processes)
-- Kill and relaunch: `pkill -9 CaesuraIsland; sleep 1; rm -f /tmp/caesura-island.sock; .build/debug/CaesuraIsland &`
-- Reset onboarding/prefs: `defaults delete dev.caesura.island` (the bundle ID, not "CaesuraIsland")
-- Full uninstall: `pkill -9 CaesuraIsland; rm -rf "/Applications/CAESURA-ISLAND.app" ~/.caesura-island; defaults delete dev.caesura.island; rm -f /tmp/caesura-island.sock`
-- Debug log: `tail -f ~/.caesura-island/debug.log`
-- Test bridge: `echo '{"session_id":"test","hook_event_name":"SessionStart","cwd":"/tmp"}' | .build/debug/CaesuraIslandBridge`
-- Test Codex bridge: append `--source codex` to the bridge invocation
-- Tap raw Codex JSON: swap `~/.caesura-island/bin/caesura-island-codex-bridge` for a tee script that copies stdin to a debug file before forwarding
+- `codex`
+- `hermes`
+- `opencode`
+- `antigravity`
 
-## Sounds
+Each provider owns a display name, accent color, mascot palette, mascot shape, and supported permission actions. CLI icons live in `Resources/cli-icons/<id>.png`; rendered documentation mascots live in `docs/mascots/<id>.png`.
 
-Per-sound toggles in Settings + onboarding `SoundEngine`:
-- `sessionStart` / `sessionEnd`
-- `completion` (fired on `Stop` → status `.idle`)
-- `toolUse` (fired on `PreToolUse` — **off by default**, gets spammy)
-- `error`
-- `approvalNeeded` / `approvalGranted` / `approvalDenied`
+## Bridge protocol
 
-Generated at runtime by `SoundSynthesizer` (8-bit square/triangle/sawtooth waves). Drop custom audio files (`.wav` / `.mp3` / `.m4a` / `.aiff` / `.caf`) into `~/.caesura-island/sound-packs/<event-name>.<ext>` to override; delete the file to revert to the synth default.
+Each hook invokes `CaesuraIslandBridge`, which reads JSON from stdin, stamps the provider source, captures its parent PID and terminal environment, normalizes the event, and sends one newline-delimited JSON message over the Unix socket.
 
-## Hook Installers
+The canonical events are:
 
-Three installers run idempotently on every launch (`AppDelegate.applicationDidFinishLaunching` → `HookInstaller.install()`, `CodexInstaller.install()`, `ProviderInstaller.installAll()`). All preserve foreign hooks, back the original up to `.bak`, and skip the write when nothing changed.
+- `SessionStart`
+- `SessionEnd`
+- `UserPromptSubmit`
+- `PreToolUse`
+- `PostToolUse`
+- `PermissionRequest`
+- `Stop`
+- `Notification`
+- `SubagentStart`
+- `SubagentStop`
+- `PreCompact`
 
-### Claude (`HookInstaller`) — `~/.claude/settings.json`, all events with `matcher: "*"`, launcher `caesura-island-bridge`.
-### Codex (`CodexInstaller`) — `~/.codex/hooks.json` (nested, no matcher) + `[features].hooks = true` in `config.toml`; launcher `caesura-island-codex-bridge`. Also persists Allow-All/Bypass as `prefix_rule(...)` (see Codex Permission Persistence).
+`SessionStore` rejects non-canonical events. Preserve this guard: a foreign hook sharing the socket must not create or mutate a session.
 
-### The other 15 (`ProviderInstaller`, Sources/CaesuraIsland/Utilities/ProviderInstaller.swift)
-A single descriptor-driven engine. Each provider is a `Descriptor` (source, config path, `Format`, `TimeoutUnit`, events, `createDirIfMissing`, `detectPaths`). Only installs when the tool is present (config dir exists OR a `detectPaths` entry exists), except Factory which bootstraps. `Format` cases:
-- `.claudeFork` — `{matcher:"*", hooks:[{type,command,timeout}]}` per event. **Gemini timeouts are ms**, the rest seconds. (Qwen/Qoder/Factory/CodeBuddy.)
-- `.nested` — like claudeFork without `matcher` (Gemini).
-- `.flat` — `[{command}]`, event via `--event` (Cursor).
-- `.copilot` — `{version:1, hooks:{event:[{type,bash,timeoutSec}]}}`, event via `--event`.
-- `.toml` — Kimi: marker-delimited `[[hooks]]` block appended to `~/.kimi/config.toml` (text merge, not JSON).
-- `.opencodePlugin` — writes a JS plugin to `~/.config/opencode/plugins/caesuraisland.js` and registers it in `opencode.json`'s `plugin` array (JSONC-tolerant).
-- `.clineScripts` — one executable bash script per event in `~/Documents/Cline/Hooks/` (chmod 0755), each pipes stdin → launcher `--event` and prints `{"cancel":false}`.
-- `.kiroAgent` — Kiro: agent-scoped JSON at `~/.kiro/agents/caesuraisland.json` (`{command,matcher,timeout_ms}` + seeded `name`). **Only fires when launched as `kiro --agent caesuraisland`.**
-- `.piExtension` — Pi / Oh My Pi: a TypeScript extension written to `~/.<src>/agent/extensions/caesuraisland.ts` that shells out to the launcher per event (import scope differs pi vs omp).
-- `.hermesYAML` — Nous Hermes: merges a `hooks:` map into `~/.hermes/config.yaml` (only when empty or `# caesura-island-managed`; bails on user content, backs up to `.bak`). Needs one-time `hermes hooks` approval.
-- `.antigravityJSON` — Google AntiGravity: a named `caesura-island` hook group merged into `~/.gemini/config/hooks.json`. Detected via `~/.gemini/antigravity` so Gemini-CLI-only users aren't touched. Daemon caches hooks at startup → needs an AntiGravity restart to load.
+Important bridge fields include `session_id`, `hook_event`, `source`, `cwd`, `tool_name`, `tool_input`, `user_message`, `assistant_message`, `agent_pid`, `_env`, and the optional file/diff fields used by permission cards.
 
-`installSource(_:)` force-installs one provider (Settings → Providers reinstall buttons). Returns `Bool` for the onboarding checkmark/retry UI.
+## Provider normalization
 
-## Permission Support per Provider
+### Codex
 
-Agents that drive the in-notch approve/deny+question UI: **Claude, Codex, Qwen, Qoder** (Claude-shape `PermissionRequest`), **OpenCode** (plugin handles `permission.asked`), and **Pi / Oh My Pi** (the TS extension sends `PermissionRequest` for risky shell commands and honors the decision). The Claude forks that omit `PermissionRequest` (Factory, CodeBuddy), Hermes, Kiro, and Cline (observe-only file hooks) handle approvals natively. Gemini/Cursor/Copilot/Kimi/AntiGravity only have blanket "before every tool" hooks → opt-in strict approval below. (Don't subscribe non-Claude-fork tools to a blocking permission hook speculatively — it risks a hang.)
+Codex uses native `hooks.json` events plus `[features].hooks = true` in `~/.codex/config.toml`. The installer merges managed commands without replacing foreign hooks.
 
-## Strict Approval ("Review every action")
+Codex permission responses use the canonical allow/deny response. `Allow All` and `Bypass` persist a `prefix_rule` through `CodexPermissionRules` when the request can be represented as a shell prefix, then allow the current request. Do not send unsupported permission-update payloads to Codex.
 
-Opt-in, per provider, for the blanket-hook tools (**Gemini, Cursor, Copilot, Kimi, AntiGravity**) that lack a selective permission event. `SettingsStore.strictApproval: [String: Bool]` is persisted to UserDefaults AND mirrored to `~/.caesura-island/config.json`. The bridge reads that file each run; when a provider's flag is on and the event is one of its gate events (`permissionGateEvents` in main.swift — Gemini `BeforeTool`, Cursor `beforeShellExecution`/`beforeMCPExecution`, Copilot `preToolUse`, Kimi `PreToolUse`, AntiGravity `PreToolUse`), it routes the event through the blocking `PermissionRequest` path and **translates** the app's Claude-shaped decision into the tool's native response (`{"permission":…}` / Gemini & AntiGravity `{"decision":…}` / `{"permissionDecision":…}` / Kimi's `hookSpecificOutput`). Gate-event hook timeouts are installed long (~5 min) so the prompt has time; off → the bridge returns instantly (today's PreToolUse behavior). Settings → General → "Review every action".
+Codex `request_user_input` arrives through `PreToolUse`. The notch mirrors the question, but the hook cannot substitute an answer. A response jumps to Codex or its terminal; `PostToolUse` dismisses the mirrored question.
 
-## Onboarding & What's New
+The Codex app-server client enriches sessions with thread names and lifecycle events. The process sweep remains the fallback for sessions whose hook stream omits a terminal event.
 
-- **Onboarding** (`OnboardingWindow.swift`, full-screen cosmic) shows once, gated on `SettingsStore.hasSeenThemeOnboarding`. Has a provider mascot strip + Back button (`reverse`-aware slide).
-- **What's New** (`WhatsNewView`/`WhatsNewWindowController`, same file) — a centered card with the bouncing mascot parade + release highlights. Shown once per version bump, gated on `SettingsStore.lastWhatsNewVersion != updateChecker.currentVersion`. Fresh installs get onboarding only (we stamp the version so they skip What's New). Re-openable anytime via the menu-bar "What's New" item (`MenuBarManager.onShowWhatsNew`).
+### Hermes
+
+Hermes hooks are merged into `~/.hermes/config.yaml`. Preserve existing YAML content and foreign hooks. Hermes event names are normalized into the canonical set.
+
+The bridge strips terminal control sequences, translates consent events into permission requests, and reshapes `clarify` payloads into the canonical question structure. Hermes question answers remain in Hermes; the notch jumps to the originating terminal or app.
+
+Strict approval is opt-in and mirrored to `~/.caesura-island/config.json` so the bridge can read it without attaching to the app process.
+
+### OpenCode
+
+The installer writes the CAESURA-ISLAND plugin under `~/.config/opencode/plugins/` and registers it in `~/.config/opencode/opencode.json` without discarding unrelated plugins.
+
+The plugin translates OpenCode lifecycle events, `permission.asked`, and question events into canonical bridge messages. It applies the bridge response through OpenCode's local API. Preserve the plugin's session, permission, and question identifiers.
+
+### AntiGravity
+
+The installer merges a named `caesura-island` hook group into `~/.gemini/config/hooks.json`. It only installs when AntiGravity is detected under `~/.gemini/antigravity`. AntiGravity must be restarted after hook changes because its daemon caches configuration.
+
+AntiGravity emits limited hook payloads. The bridge reads its `transcript.jsonl` to recover the latest user request and model planner response. Its `PreToolUse` event can become a blocking permission request when strict approval is enabled, and the canonical decision is translated back into AntiGravity's native response.
+
+## Installer guarantees
+
+Managed entries contain the marker `# caesura-island-managed` or the equivalent structured `caesura-island` key. Installer changes must be additive:
+
+- Preserve foreign hooks and unrelated configuration.
+- Create a backup before rewriting an existing config.
+- Use atomic replacement where implemented.
+- Keep launcher names under `~/.caesura-island/bin`.
+- Keep socket and config paths centralized; do not introduce legacy path fallbacks.
+
+The retained installer formats are `hermesYAML`, `opencodePlugin`, and `antigravityJSON`, plus the dedicated Codex installer.
+
+## Session lifecycle
+
+`SessionStore` is the session source of truth. It maintains active state, current tool, pending permissions/questions, terminal metadata, last user/assistant text, model, and provider identity.
+
+The process sweep runs every five seconds. It validates the captured PID and process start time before marking a vanished agent complete, preventing false matches after PID reuse. Session persistence and recovery must remain provider-neutral.
+
+Pending decisions are queued oldest-first. The notch must not switch to a second prompt while the user is acting on the first. Terminal-side completion dismisses the matching prompt and advances the queue.
+
+## Terminal jump
+
+`TerminalJumper` uses captured terminal metadata to return to the originating tab, pane, or app. Keep the specific adapters for Terminal, iTerm2, tmux, Ghostty, Kitty, WezTerm, VS Code-family terminals, JetBrains IDEs, and Codex.app. Terminal support is independent of the four agent integrations.
+
+## UI engines
+
+The notch is an AppKit panel hosting SwiftUI. It is borderless, non-activating, top-centered, and adapts to notch and non-notch displays. State consists of collapsed, expanded, finished, permission, and question views.
+
+The following are retained engines, not provider-specific code:
+
+- theme tokens and themed surface modifiers
+- pixel mascot renderer and animation timing
+- sound synthesis and sound-pack loading
+- rate-limit display and polling
+- notification delivery
+- permission and question queue
+- terminal jumping
+
+Themes may change chrome but must preserve semantic status and action colors. Mascot palettes remain provider-owned.
+
+## Logging and state
+
+Runtime state is under `~/.caesura-island`:
+
+- `cache/rl.json`
+- `debug.log`
+- `sound-packs/`
+- `config.json`
+- `bin/`
+
+The app bundle identifier and UserDefaults domain are `dev.caesura.island`. The sole socket path is `/tmp/caesura-island.sock`.
+
+## Change discipline
+
+Keep diffs limited to the requested behavior. Do not replace the bridge, installer, session, theme, mascot, sound, or terminal engines with new abstractions. After changes, run `swift build`; for release-affecting changes also run `swift build -c release` and `./scripts/build-app.sh`.

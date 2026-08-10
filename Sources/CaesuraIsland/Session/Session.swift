@@ -25,22 +25,6 @@ enum PermissionAction: Hashable {
     case allowOnce
     case allowAll
     case bypass
-    /// Defer to the tool's own prompt (behavior "ask") and jump to it. Used by
-    /// providers whose hooks only support allow/deny/ask (Cursor, Copilot).
-    case deferToApp
-    /// ExitPlanMode: approve the plan, exit plan mode into the normal prompt-each-
-    /// edit mode (allow + setMode "default"). Plain allow keeps the session in
-    /// plan mode, so the setMode is required to actually exit.
-    case approvePlan
-    /// ExitPlanMode: approve the plan and start in `auto` mode (allow + setMode
-    /// "auto") — the terminal's "Yes, and use auto mode" (amber "⏵⏵ auto mode on").
-    case approvePlanAuto
-    /// Allow this call + switch the session into `auto` mode (allow + setMode
-    /// "auto") — Claude's amber "⏵⏵ auto mode on". Runs everything without routine
-    /// prompts, gated by a server-side safety classifier. Replaces the old dontAsk
-    /// "Bypass" on Claude's row. NB: this is NOT "acceptEdits" (the narrower,
-    /// purple "⏵⏵ accept edits on" — edits only, bash still prompts).
-    case autoMode
 }
 
 struct PendingPermission {
@@ -50,22 +34,13 @@ struct PendingPermission {
     let content: String?
     let oldString: String?
     let newString: String?
-    /// ExitPlanMode only: the proposed plan as markdown (rendered in PlanView).
-    let planMarkdown: String?
-    /// ExitPlanMode only: path to the saved plan `.md` file.
-    let planFilePath: String?
     let respond: (PermissionAction) -> Void
     /// Enqueue time. Used to surface oldest-first in the notch queue
     /// (deterministic FIFO across sessions) — issue #6.
     let requestedAt: Date
 
-    /// A plan-review request (Claude's ExitPlanMode) routes to PlanView instead
-    /// of the generic permission card.
-    var isPlan: Bool { planMarkdown != nil }
-
     init(toolName: String, description: String?, filePath: String?, content: String?,
          oldString: String?, newString: String?,
-         planMarkdown: String? = nil, planFilePath: String? = nil,
          respond: @escaping (PermissionAction) -> Void,
          requestedAt: Date = Date()) {
         self.toolName = toolName
@@ -74,8 +49,6 @@ struct PendingPermission {
         self.content = content
         self.oldString = oldString
         self.newString = newString
-        self.planMarkdown = planMarkdown
-        self.planFilePath = planFilePath
         self.respond = respond
         self.requestedAt = requestedAt
     }
@@ -127,19 +100,15 @@ struct Session: Identifiable {
     /// Model the agent is currently using, captured from any hook with a
     /// `model` field. Shortened by `shortModelName` for display.
     var model: String?
-    /// Claude multi-profile label (e.g. "work" from ~/.claude-work). nil for
-    /// the default ~/.claude profile.
-    var profile: String?
-    /// AI provider identifier (claude / codex / gemini / ...).
-    /// Defaults to "claude" if the bridge doesn't stamp a source.
-    var source: String = "claude"
+    /// AI provider identifier.
+    var source: String = "codex"
     /// Time of the most recent event from this session — used so the collapsed
     /// notch tracks the *currently active* session, not just whichever was opened first.
     var lastActivityAt: Date = .init()
     /// When the session most recently entered an active state (thinking/toolUse).
     /// Cleared when status returns to idle. Used to render the live "Xms" counter.
     var activeStartedAt: Date?
-    /// PID of the AI agent process (Claude / Codex / ...). Used to detect when
+    /// PID of the AI agent process. Used to detect when
     /// the agent has exited so we can clean up the session — agents don't
     /// always fire SessionEnd reliably (Codex doesn't, for example).
     var agentPid: Int?
@@ -166,7 +135,7 @@ struct Session: Identifiable {
     }
 
     /// Preferred display name. Falls through three sources in order:
-    ///   1. `sessionTitle` — Claude Code sends this; Codex doesn't.
+    ///   1. `sessionTitle` from the provider or Codex app-server.
     ///   2. The folder name from `cwd` if it looks like a real project (not the
     ///      user's home directory).
     ///   3. The first prompt the user sent, truncated. Better than showing the
@@ -193,15 +162,10 @@ struct Session: Identifiable {
         return String(trimmed.prefix(max)) + "…"
     }
 
-    /// Short, display-ready model label. Strips the provider prefix
-    /// (`claude-`) since the mascot already shows which provider it is,
-    /// and squashes Anthropic's dashes into spaces for readability.
+    /// Short, display-ready model label.
     var shortModelName: String? {
         guard let raw = model, !raw.isEmpty else { return nil }
-        var s = raw
-        if s.hasPrefix("claude-") { s = String(s.dropFirst("claude-".count)) }
-        s = s.replacingOccurrences(of: "-", with: " ")
-        return s
+        return raw.replacingOccurrences(of: "-", with: " ")
     }
 
     var durationText: String {

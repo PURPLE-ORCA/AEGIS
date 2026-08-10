@@ -58,7 +58,7 @@ final class CodexAppServerClient: ObservableObject {
     private let maxConsecutiveQuickFailures = 10
 
     /// Common install paths for the `codex` CLI in priority order. Mirrors the
-    /// approach the reference repo uses for the Claude CLI — we deliberately
+    /// approach used by comparable CLI integrations — we deliberately
     /// don't shell out to `which` because LaunchServices gives a GUI app a
     /// stripped PATH (`/usr/bin:/bin:/usr/sbin:/sbin`) that misses every
     /// Homebrew / nvm / Bun / npm install.

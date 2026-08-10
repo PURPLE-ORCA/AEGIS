@@ -176,20 +176,13 @@ struct PermissionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Icon / label / color for each permission action. `deferToApp` is labeled
-    /// per provider (e.g. "Decide in Cursor").
+    /// Icon, label, and color for each supported permission action.
     static func actionConfig(for action: PermissionAction, provider: AIProvider) -> (icon: String, label: String, color: Color) {
         switch action {
         case .deny:       return ("xmark", "Deny", Color(red: 0.92, green: 0.55, blue: 0.55))
         case .allowOnce:  return ("checkmark", "Allow Once", Color(red: 0.45, green: 0.78, blue: 0.86))
         case .allowAll:   return ("checkmark.circle", "Allow All", Color(red: 0.55, green: 0.78, blue: 0.55))
         case .bypass:     return ("bolt", "Bypass", Color(red: 0.70, green: 0.62, blue: 0.92))
-        case .deferToApp: return ("arrow.up.forward.app", "Decide in \(provider.displayName)", Color(red: 0.70, green: 0.62, blue: 0.92))
-        case .autoMode:   return ("forward.fill", "Auto Mode", Color(red: 0.96, green: 0.72, blue: 0.25))
-        // Plan-only actions are rendered by PlanView with explicit labels; these
-        // exist for exhaustiveness and aren't surfaced by the permission card.
-        case .approvePlan:     return ("checkmark", "Approve", Color(red: 0.55, green: 0.78, blue: 0.55))
-        case .approvePlanAuto: return ("forward.fill", "Approve & auto-run", Color(red: 0.96, green: 0.72, blue: 0.25))
         }
     }
 

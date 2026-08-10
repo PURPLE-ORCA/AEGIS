@@ -6,11 +6,10 @@ import SwiftUI
 ///
 /// Themes restyle **chrome only** — window background, card/box/pill/button
 /// shape language, borders, shadows, and font design. They deliberately do
-/// NOT touch semantic or brand colors: provider accents (Claude terracotta,
-/// Codex gray), mascot palettes, status colors (cyan thinking / green idle /
+/// NOT touch semantic or brand colors: provider accents, mascot palettes,
+/// status colors (cyan thinking / green idle /
 /// orange waiting / red error), tool colors, action-button red/green/purple,
-/// and rate-limit thresholds all stay constant so the crab is always the crab
-/// and red always means deny.
+/// and rate-limit thresholds all stay constant so red always means deny.
 enum NotchThemeID: String, CaseIterable, Identifiable {
     case `default`
     case glass
@@ -183,9 +182,8 @@ struct NotchTheme {
     var cardInkError: NotchCardInk? = nil
 
     /// The one sanctioned exception to "themes never touch mascots": Web-Slinger
-    /// pulls its mask over Claude's crab and Codex's box. Every other mascot
-    /// ignores it, and no palette changes — the crab is still terracotta under
-    /// the hood, so status still reads.
+    /// pulls its mask over Codex's box. Other mascots ignore it and no palette
+    /// changes, so status still reads.
     var masksMascots: Bool = false
 
     /// Backdrop decoration drawn behind all content when expanded.

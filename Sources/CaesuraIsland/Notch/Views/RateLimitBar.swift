@@ -1,16 +1,12 @@
 import SwiftUI
 
-/// Compact rate-limit bar. Renders the 5h and 7d windows for a single provider
-/// — pass `.claude` or `.codex` to switch. Caller decides which provider to
-/// show (typically follows the active filter or the latest active session).
+/// Compact rate-limit bar for a provider snapshot.
 struct RateLimitBar: View {
     @ObservedObject var rateLimitStore: RateLimitStore
-    /// Which provider's windows to render. Defaults to Claude for backward
-    /// compatibility with views that haven't been wired to the filter yet.
-    var provider: AIProvider = .claude
+    var provider: AIProvider = .codex
     /// Optional tap handler — when set, the bar becomes a button that cycles
     /// to the next provider. Used in SessionListView to let users flip
-    /// between Claude / Codex rate limits without touching the filter chips.
+    /// between available provider snapshots without touching the filter chips.
     var onTap: (() -> Void)? = nil
     @Environment(\.notchTheme) private var theme
 

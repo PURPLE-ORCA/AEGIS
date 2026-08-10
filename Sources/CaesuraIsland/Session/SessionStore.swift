@@ -9,7 +9,6 @@ enum SessionEvent {
     case toolEnded(String, String)
     case permissionRequested(String)
     case permissionResponded(String, Bool)
-    case planRequested(String)
     case questionAsked(String)
     case pendingDismissedExternally(String)
     case notification(String, String)
@@ -45,7 +44,7 @@ final class SessionStore: ObservableObject {
     /// Marks sessions whose agent has exited as ended, then removes them.
     ///
     /// Two detection strategies, used in parallel:
-    ///   1. PID probe via `kill(pid, 0)` — reliable for Claude, where the
+    ///   1. PID probe via `kill(pid, 0)` — reliable for providers where the
     ///      hook bridge's `getppid()` returns the agent's own short-lived
     ///      process. Returns -1 with errno=ESRCH when the process is gone.
     ///   2. Codex-only inactivity timeout — Codex routes hooks through a
@@ -116,7 +115,7 @@ final class SessionStore: ObservableObject {
                 guard let self else { return }
                 self.pendingRemovals.removeValue(forKey: sessionId)
                 // Re-check completed — a brand-new session with the same id
-                // (Claude --resume, Codex thread reuse) will have status
+                // Resumed or reused sessions will have status
                 // reset to .idle / .thinking by ensureSession + handleMessage.
                 if self.sessions[sessionId]?.status == .completed {
                     self.sessions.removeValue(forKey: sessionId)
@@ -159,7 +158,7 @@ final class SessionStore: ObservableObject {
                 startedAt: Date(),
                 status: .idle,
                 terminalInfo: message.terminalInfo,
-                source: message.source ?? "claude"
+                source: message.source ?? "codex"
             )
             s.cwdIsPlaceholder = (message.cwd == nil)
             s.announced = true
@@ -182,8 +181,8 @@ final class SessionStore: ObservableObject {
 
     /// The canonical events the store understands. Every provider bridge
     /// normalizes its native vocabulary to one of these before sending; a
-    /// message arriving with a raw, un-normalized name (e.g. Cursor's
-    /// "beforeSubmitPrompt"/"stop") bypassed our normalization and belongs to
+    /// a message arriving with a raw, un-normalized name bypassed our
+    /// normalization and belongs to
     /// a foreign/misconfigured integration sharing the socket — drop it so it
     /// can't create phantom sessions or clobber a correctly-attributed one.
     private static let canonicalEvents: Set<String> = [
@@ -200,7 +199,7 @@ final class SessionStore: ObservableObject {
         ensureSession(message)
         // A late buffered hook may arrive after we've marked a session
         // .completed and scheduled removal. Cancel the pending removal so
-        // the brand-new session (Claude resume / Codex thread reuse) isn't
+        // the brand-new session (for example, Codex thread reuse) isn't
         // deleted out from under us, and reset .completed back to .idle so
         // the per-event switch below can transition normally (issue #10).
         if sessions[sessionId]?.status == .completed {
@@ -223,10 +222,6 @@ final class SessionStore: ObservableObject {
         // Always update session title if present
         if let title = message.sessionTitle, !title.isEmpty {
             sessions[sessionId]?.sessionTitle = title
-        }
-        // Claude multi-profile label (~/.claude-work → "work").
-        if let profile = message.profile, !profile.isEmpty {
-            sessions[sessionId]?.profile = profile
         }
         // Capture the agent PID — used to detect when the agent exits.
         // Also stamp its start time so PID reuse can be detected later
@@ -257,7 +252,7 @@ final class SessionStore: ObservableObject {
                 // Allow-once for orphaned permissions — the user already
                 // answered in the terminal, so we're just acking the protocol.
                 droppedPermission?.respond(.allowOnce)
-                // For orphaned questions, defer-to-terminal so Claude knows
+                // For orphaned questions, defer to the provider terminal so it knows
                 // to fall through to its native prompt. (No-op for Codex
                 // where respond is just a TerminalJumper hook.)
                 if let q = droppedQuestion, let data = BridgeResponse.deferToTerminal() {
@@ -308,10 +303,9 @@ final class SessionStore: ObservableObject {
             // terminal where the user actually answers. (The Hermes bridge has
             // already reshaped clarify's {question,choices} into the canonical
             // questions JSON.) PostToolUse dismisses it once they've answered.
-            let src = message.source ?? "claude"
+            let src = message.source ?? "codex"
             let isMirroredQuestion = (src == "codex" && toolName == "request_user_input")
                 || (src == "hermes" && toolName == "clarify")
-                || ((src == "omp" || src == "pi") && toolName == "Ask")
             if isMirroredQuestion,
                let desc = message.toolInput,
                let parsedQuestions = Self.parseQuestion(desc) {
@@ -342,23 +336,8 @@ final class SessionStore: ObservableObject {
             let toolName = message.toolName ?? "unknown"
             let description = message.toolInput
 
-            // Auto-allow if bypass permissions mode — but NOT for
-            // AskUserQuestion. Claude requires updatedInput.answers in the
-            // response; a bare allow() makes the assistant proceed with no
-            // user input. Fall through so the question UI runs (issue #5).
-            if message.permissionMode == "bypassPermissions",
-               toolName != "AskUserQuestion" {
-                Log.info("Bypass mode — auto-allowing \(toolName) for session=\(sessionId.prefix(8))")
-                let response = BridgeResponse.allow()
-                respond?(response)
-                return
-            }
-
-            // Detect a question tool — show the question UI instead of the
-            // generic permission card. Claude uses `AskUserQuestion`; Qwen fires
-            // the same Claude-shaped `questions` payload as `ask_user_question`
-            // (snake_case) via its native PermissionRequest.
-            if (toolName == "AskUserQuestion" || toolName == "ask_user_question"),
+            // OpenCode question events use the canonical AskUserQuestion name.
+            if toolName == "AskUserQuestion",
                let desc = description,
                let parsedQuestions = Self.parseQuestion(desc) {
                 sessions[sessionId]?.status = .waitingPermission
@@ -372,9 +351,6 @@ final class SessionStore: ObservableObject {
                 )
                 onEvent.send(.questionAsked(sessionId))
             } else {
-                // Claude's ExitPlanMode carries the plan as markdown in a JSON
-                // string (`{"plan":…,"planFilePath":…}`) — route it to PlanView.
-                let plan = (toolName == "ExitPlanMode") ? Self.parsePlan(description) : nil
                 sessions[sessionId]?.status = .waitingPermission
                 sessions[sessionId]?.pendingPermission = PendingPermission(
                     toolName: toolName,
@@ -383,12 +359,10 @@ final class SessionStore: ObservableObject {
                     content: message.toolContent,
                     oldString: message.toolOldString,
                     newString: message.toolNewString,
-                    planMarkdown: plan?.plan,
-                    planFilePath: plan?.planFilePath,
                     respond: { [weak self] action in
                         Log.info("Permission responded: \(action) for session=\(sessionId.prefix(8)), respondRaw=\(respondRaw != nil)")
                         // State is already cleared by respondToPermission() synchronously.
-                        // Codex rejects Claude's `updatedPermissions` shape, so we
+                        // Codex rejects `updatedPermissions`, so we
                         // persist allow-all / bypass via a TOML rules file instead
                         // and return a plain `behavior: allow`.
                         let isCodex = self?.sessions[sessionId]?.source == "codex"
@@ -409,7 +383,7 @@ final class SessionStore: ObservableObject {
                                 }
                                 respond?(BridgeResponse.allow())
                             } else if let data = BridgeResponse.allowAllForTool(toolName), respondRaw != nil {
-                                Log.info("Sending Claude allowAll raw data (\(data.count) bytes)")
+                                Log.info("Sending allow-all response (\(data.count) bytes)")
                                 respondRaw?(data)
                             } else {
                                 respond?(BridgeResponse.allow())
@@ -421,39 +395,13 @@ final class SessionStore: ObservableObject {
                                     Log.info("Codex Bypass not persisted for tool=\(toolName); allowing once")
                                 }
                                 respond?(BridgeResponse.allow())
-                            } else if let data = BridgeResponse.bypass(), respondRaw != nil {
-                                Log.info("Sending Claude bypass raw data (\(data.count) bytes)")
-                                respondRaw?(data)
-                            } else {
-                                respond?(BridgeResponse.allow())
-                            }
-                        case .deferToApp:
-                            // behavior "ask" → the bridge translates this to the
-                            // tool's native defer (Cursor "ask" / Copilot "ask"),
-                            // so the agent shows its own prompt; we also jump to it.
-                            if let data = BridgeResponse.deferToTerminal(), respondRaw != nil {
-                                respondRaw?(data)
-                            } else {
-                                respond?(BridgeResponse.allow())
-                            }
-                        case .approvePlan, .approvePlanAuto, .autoMode:
-                            // setMode is required: a plain allow leaves the
-                            // session's mode unchanged (incl. staying in plan
-                            // mode for ExitPlanMode). "default" = approve &
-                            // prompt each edit / "auto" = Claude's "⏵⏵ auto mode
-                            // on" (runs everything, gated by a safety classifier).
-                            // NOT "acceptEdits" — that's the narrower, separate
-                            // "⏵⏵ accept edits on" (edits only, bash still prompts).
-                            let mode = action == .approvePlan ? "default" : "auto"
-                            if let data = BridgeResponse.allowWithMode(mode), respondRaw != nil {
-                                respondRaw?(data)
                             } else {
                                 respond?(BridgeResponse.allow())
                             }
                         }
                     }
                 )
-                onEvent.send(plan != nil ? .planRequested(sessionId) : .permissionRequested(sessionId))
+                onEvent.send(.permissionRequested(sessionId))
             }
 
         case "Stop":
@@ -521,7 +469,7 @@ final class SessionStore: ObservableObject {
         return questions.enumerated().map { qIndex, q in
             let questionText = q["question"] as? String ?? ""
             let header = q["header"] as? String
-            // Oh My Pi's Ask tool uses `multi`; Claude/Codex use `multiSelect`.
+            // Accept both common multi-select field spellings.
             let multiSelect = q["multiSelect"] as? Bool ?? q["multi"] as? Bool ?? false
             let options = (q["options"] as? [[String: Any]] ?? []).enumerated().map { oIndex, opt in
                 QuestionOption(
@@ -551,40 +499,24 @@ final class SessionStore: ObservableObject {
         return obj["suggestions"] != nil
     }
 
-    /// Parse Claude's ExitPlanMode tool_input — a JSON *string*
-    /// `{"plan":"<markdown>","planFilePath":"…/plans/<name>.md"}`.
-    private static func parsePlan(_ json: String?) -> (plan: String, planFilePath: String?)? {
-        guard let json, let data = json.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let plan = (obj["plan"] as? String), !plan.isEmpty else {
-            return nil
-        }
-        return (plan, obj["planFilePath"] as? String)
-    }
-
     func respondToPermission(sessionId: String, action: PermissionAction) {
         guard let pending = sessions[sessionId]?.pendingPermission else { return }
-        let session = sessions[sessionId]
         // Clear immediately so nextPendingPermission() won't find it again
         sessions[sessionId]?.pendingPermission = nil
         sessions[sessionId]?.status = .thinking
         pending.respond(action)
         onEvent.send(.permissionResponded(sessionId, action != .deny))
-        // Defer-to-app: surface the tool so the user can answer its own prompt.
-        if action == .deferToApp, let session {
-            TerminalJumper.jump(to: session)
-        }
     }
 
     /// Apply renamed Codex session titles fetched from the codex app-server.
     /// Matches by `session_id` since Codex's hook session id is the same UUID
     /// it reports as `thread.id` from the JSON-RPC stream. Sessions that
-    /// already have a title (user-provided or from Claude) are left alone.
+    /// already have a user-provided title are left alone.
     func applyCodexThreadNames(_ names: [String: String]) {
         for (threadId, name) in names {
             guard var session = sessions[threadId] else { continue }
             // Only overwrite the title if the existing one is empty or matches
-            // the auto-derived fallback (folder name / first prompt).
+            // the auto-derived fallback.
             let current = session.sessionTitle ?? ""
             if current.isEmpty || current == session.projectName {
                 session.sessionTitle = name
@@ -682,22 +614,12 @@ final class SessionStore: ObservableObject {
             .min(by: { $0.at < $1.at })?.id
     }
 
-    /// Defer the pending question to the terminal (Claude Code will prompt there).
+    /// Defer the pending question to the provider's terminal or app.
     func deferQuestionToTerminal(sessionId: String) {
         guard let q = sessions[sessionId]?.pendingQuestion else { return }
-        let source = sessions[sessionId]?.source
         sessions[sessionId]?.pendingQuestion = nil
         sessions[sessionId]?.status = .thinking
-        // Qwen's `ask_user_question` can't take a hook-supplied answer (no
-        // `answers` field in its schema). Per qwen-code's permissionFlow, its
-        // CLI dialog shows only when finalPermission is "ask"/"default" — `allow`
-        // skips it (empty answers) and `deny` blocks it. Returning an EMPTY hook
-        // response leaves finalPermission at "default", so Qwen shows its native
-        // dialog on the CLI and the user answers there. Everyone else uses
-        // behavior "ask" to defer to their own prompt.
-        let data: Data? = (source == "qwen")
-            ? Data("{}".utf8)
-            : BridgeResponse.deferToTerminal()
+        let data = BridgeResponse.deferToTerminal()
         if let data { q.respond(data) }
         if let session = sessions[sessionId] {
             TerminalJumper.jump(to: session)
@@ -706,12 +628,12 @@ final class SessionStore: ObservableObject {
 
     /// Called from QuestionView with answers keyed by `QuestionItem.id`.
     /// Multi-select answers come as comma-joined option labels — matches
-    /// Claude Code's documented format.
+    /// the canonical provider question format.
     func respondToQuestion(sessionId: String, answersByQuestionId: [String: String]) {
         guard let q = sessions[sessionId]?.pendingQuestion else { return }
 
         // BridgeResponse.allowWithAnswers expects answers keyed by the
-        // question text (Claude's convention), so translate.
+        // question text, so translate.
         var answersByText: [String: String] = [:]
         for question in q.questions {
             if let v = answersByQuestionId[question.id] {
