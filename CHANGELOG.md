@@ -4,3 +4,10 @@
 
 - Established the CAESURA-ISLAND identity and fresh repository history.
 - Limited the supported agent surface to Codex, Hermes, OpenCode, and AntiGravity.
+- Added read-only Codex Desktop rollout monitoring and Hermes Desktop SQLite monitoring.
+- Made session cards open exact Codex tasks and permission-gated Hermes session tabs.
+- Corrected Codex remaining-quota semantics and shortened the refresh interval.
+- Added instant single-display hover and delayed multi-display hover intent.
+- Replaced game-style sounds with restrained professional notification tones.
+- Completed the purple-black Caesura surface system across the window, cards, pills, and actions.
+- Built and GUI-tested the runnable ad-hoc-signed macOS app bundle.

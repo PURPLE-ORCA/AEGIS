@@ -23,7 +23,7 @@ Final verification passed for the debug build, release build, bundle assembly, `
 - Codex quota display now classifies windows from API duration, shows remaining quota, and refreshes every minute. Current verified output: `7d 42% left 5d3h`.
 - Notch hover is instant on the standalone built-in display. With multiple active displays it uses a 350ms intent delay so fast crossings cancel. Click still opens immediately, and Settings includes an `Expand on hover` toggle for click-only mode.
 - Default game-style waveforms were replaced by restrained sine-partial notification tones. Session start/end and tool-use chatter default to Off.
-- New purple-black `Caesura` appearance is selected by default through a one-time preference migration.
+- The purple-black `Caesura` appearance is selected by default through a one-time preference migration. Window chrome, cards, pills, and action wells now use purple-black surfaces; semantic cyan/green/orange remains limited to meaningful text, icons, and borders.
 - Command-comma now opens the real Settings window instead of the empty SwiftUI settings scene.
 - Codex Desktop is monitored through appended rollout JSONL events in `~/.codex/sessions`; the previous redundant `codex app-server` subprocess was removed.
 - Hermes Desktop is monitored through new desktop-only message rows in `~/.hermes/state.db` using SQLite WAL-safe reads.
@@ -57,6 +57,7 @@ Final verification passed for the debug build, release build, bundle assembly, `
 | 3. Codex CLI live working → finished | Partial / live UI untested | The real command completed, but installed Codex CLI 0.135.0 did not emit lifecycle hooks. Direct launcher → bridge → socket delivery passed. See [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt). |
 | 3. Codex Desktop live prompt/tool state | Pass | [`docs/test-evidence/codex-desktop-working.png`](docs/test-evidence/codex-desktop-working.png), [`docs/test-evidence/desktop-sessions-expanded.png`](docs/test-evidence/desktop-sessions-expanded.png), [`docs/test-evidence/19-desktop-session-results.txt`](docs/test-evidence/19-desktop-session-results.txt) |
 | Desktop session-card jump | Codex pass; Hermes partial pending owner permission | Codex cards opened exact thread IDs. Hermes activated and reached the exact-tab Accessibility boundary; its first click now requests the required permission. [`docs/test-evidence/20-clickable-session-cards.jpeg`](docs/test-evidence/20-clickable-session-cards.jpeg), [`docs/test-evidence/21-session-jump-results.txt`](docs/test-evidence/21-session-jump-results.txt) |
+| Complete purple-black Caesura surfaces | Pass | Built app GUI shows the window, session card, status pill, and action well using the intended purple-black surface system. Semantic cyan remains only on the tool-state content. [`docs/test-evidence/22-complete-caesura-theme.jpeg`](docs/test-evidence/22-complete-caesura-theme.jpeg) |
 | 3. AntiGravity live working → finished | Partial / live UI untested | The real `agy --print` command completed, but the headless client did not emit its configured hooks. See [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt). |
 | 4. Permission Allow and Deny | Pass | [`docs/test-evidence/08-opencode-permission.png`](docs/test-evidence/08-opencode-permission.png), [`docs/test-evidence/09-opencode-deny.png`](docs/test-evidence/09-opencode-deny.png), [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt) |
 | 5. Terminal jump | Untested | Computer Use refused access to Ghostty for safety reasons, so the destination tab could not be driven or observed. |
@@ -88,3 +89,8 @@ The corresponding Codex hooks, Gemini/AntiGravity hooks, and OpenCode JSONC file
 - `https://github.com/simibac/ConfettiSwiftUI.git` remains as the sole GitHub package dependency and is unrelated to upstream identity.
 - The first fresh-history commit subject names the imported upstream repository because Phase 0 explicitly required that subject; no upstream commits or ancestry remain.
 - The upstream checkout contained no `ios/CodeIslandCompanion` or `apple-companion` tree, so there was no companion source available to preserve or rename.
+
+## Durable project notes
+
+- Complete checkpoint: `/Users/purpleorca/Documents/PURPLE-VAULT/PROJECTS/ACTIVE/CAESURA-ISLAND/CHECKPOINT-2026-08-10.md`
+- Research and 30-point roadmap: `/Users/purpleorca/Documents/PURPLE-VAULT/PROJECTS/ACTIVE/CAESURA-ISLAND/RESEARCH-ROADMAP-2026-08-10.md`
