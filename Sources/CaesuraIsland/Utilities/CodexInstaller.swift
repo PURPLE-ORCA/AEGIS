@@ -56,9 +56,9 @@ enum CodexInstaller {
     private static func writeHooksJSON(in codexDir: URL) -> Bool {
         let bridgeCmd = bridgeCommand()
         let events = [
-            "SessionStart", "SessionEnd", "UserPromptSubmit",
+            "SessionStart", "UserPromptSubmit",
             "PreToolUse", "PostToolUse", "Stop",
-            "Notification", "SubagentStart", "SubagentStop", "PreCompact",
+            "SubagentStart", "SubagentStop", "PreCompact",
         ]
         let permissionEvents = ["PermissionRequest"]
 
@@ -76,9 +76,19 @@ enum CodexInstaller {
         }
 
         var hooks = root["hooks"] as? [String: Any] ?? [:]
+        // Notification is not a Codex lifecycle hook. Remove only our stale
+        // entry from older CAESURA-ISLAND installs while preserving foreign data.
+        if var notificationEntries = hooks["Notification"] as? [[String: Any]] {
+            notificationEntries.removeAll(where: isCaesuraIslandEntry)
+            if notificationEntries.isEmpty { hooks.removeValue(forKey: "Notification") }
+            else { hooks["Notification"] = notificationEntries }
+        }
         for ev in events {
             mergeCaesuraIslandEntry(in: &hooks, event: ev, command: bridgeCmd, timeout: 5)
         }
+        // Codex caps SessionEnd hooks at three seconds; a larger timeout makes
+        // the hook source invalid and prevents every lifecycle hook from loading.
+        mergeCaesuraIslandEntry(in: &hooks, event: "SessionEnd", command: bridgeCmd, timeout: 3)
         for ev in permissionEvents {
             mergeCaesuraIslandEntry(in: &hooks, event: ev, command: bridgeCmd, timeout: 300)
         }
@@ -115,11 +125,6 @@ enum CodexInstaller {
     private static func mergeCaesuraIslandEntry(in hooks: inout [String: Any], event: String, command: String, timeout: Int) {
         var entries = hooks[event] as? [[String: Any]] ?? []
 
-        let isOurs: ([String: Any]) -> Bool = { entry in
-            guard let inner = entry["hooks"] as? [[String: Any]] else { return false }
-            return inner.contains { ($0["command"] as? String)?.contains("caesura-island") == true }
-        }
-
         let ourEntry: [String: Any] = [
             "hooks": [["type": "command", "command": command, "timeout": timeout]]
         ]
@@ -128,9 +133,14 @@ enum CodexInstaller {
         // adding one — otherwise duplicates that accumulated from an older build
         // persist, and Codex fires the bridge once per copy → N duplicate notch
         // cards for a single turn (issue: "1 chat spawns 6 notifications").
-        entries.removeAll(where: isOurs)
+        entries.removeAll(where: isCaesuraIslandEntry)
         entries.append(ourEntry)
         hooks[event] = entries
+    }
+
+    private static func isCaesuraIslandEntry(_ entry: [String: Any]) -> Bool {
+        guard let inner = entry["hooks"] as? [[String: Any]] else { return false }
+        return inner.contains { ($0["command"] as? String)?.contains("caesura-island") == true }
     }
 
     private static func normalizedJSON(_ data: Data) -> Data? {
