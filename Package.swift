@@ -24,5 +24,10 @@ let package = Package(
             name: "CaesuraIslandBridge",
             path: "Sources/CaesuraIslandBridge"
         ),
+        .testTarget(
+            name: "CaesuraIslandTests",
+            dependencies: ["CaesuraIsland"],
+            path: "Tests/CaesuraIslandTests"
+        ),
     ]
 )
