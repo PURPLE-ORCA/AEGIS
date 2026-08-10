@@ -21,20 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0.0"
     }
 
-    private func log(_ msg: String) {
-        let line = "[\(DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium))] \(msg)\n"
-        let logFile = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".caesura-island/debug.log")
-        if let handle = try? FileHandle(forWritingTo: logFile) {
-            handle.seekToEndOfFile()
-            handle.write(line.data(using: .utf8)!)
-            handle.closeFile()
-        } else {
-            try? line.write(to: logFile, atomically: true, encoding: .utf8)
-        }
-    }
-
     func applicationDidFinishLaunching(_ notification: Notification) {
-        log("App launching...")
+        Log.info("App launching...")
         // Hide dock icon (LSUIElement backup)
         NSApp.setActivationPolicy(.accessory)
 
@@ -42,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         socketServer.onMessage = { [weak self] message, respond, respondRaw in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.log("Received: \(message.hookEvent) session=\(message.sessionId.prefix(8))")
+                Log.info("Received: \(message.hookEvent) session=\(message.sessionId.prefix(8))")
                 self.sessionStore.handleMessage(message, respond: respond, respondRaw: respondRaw)
             }
         }
@@ -76,12 +64,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         notchWindowController?.showWindow(nil)
         let screen = ScreenDetector.notchScreen
-        log("Notch window shown, frame: \(notchWindowController?.window?.frame ?? .zero)")
-        log("Screen frame: \(screen.frame)")
-        log("Screen visibleFrame: \(screen.visibleFrame)")
-        log("SafeAreaInsets: top=\(screen.safeAreaInsets.top) bottom=\(screen.safeAreaInsets.bottom)")
-        log("Notch height: \(ScreenDetector.notchHeight), hasNotch: \(ScreenDetector.hasNotch)")
-        log("Window level: \(notchWindowController?.window?.level.rawValue ?? -1)")
+        Log.info("Notch window shown, frame: \(notchWindowController?.window?.frame ?? .zero)")
+        Log.info("Screen frame: \(screen.frame)")
+        Log.info("Screen visibleFrame: \(screen.visibleFrame)")
+        Log.info("SafeAreaInsets: top=\(screen.safeAreaInsets.top) bottom=\(screen.safeAreaInsets.bottom)")
+        Log.info("Notch height: \(ScreenDetector.notchHeight), hasNotch: \(ScreenDetector.hasNotch)")
+        Log.info("Window level: \(notchWindowController?.window?.level.rawValue ?? -1)")
 
         // Menu bar
         menuBarManager = MenuBarManager(
@@ -97,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Start socket server
         socketServer.start()
-        log("Socket server started")
+        Log.info("Socket server started")
 
         // Setup directories
         setupDirectories()
@@ -111,13 +99,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         codexDesktopWatcher.onMessage = { [weak self] message in
-            self?.log("Codex Desktop: \(message.hookEvent) session=\(message.sessionId.prefix(8))")
+            Log.info("Codex Desktop: \(message.hookEvent) session=\(message.sessionId.prefix(8))")
             self?.sessionStore.handleMessage(message, respond: nil)
         }
         codexDesktopWatcher.start()
 
         hermesDesktopWatcher.onMessage = { [weak self] message in
-            self?.log("Hermes Desktop: \(message.hookEvent) session=\(message.sessionId.prefix(8))")
+            Log.info("Hermes Desktop: \(message.hookEvent) session=\(message.sessionId.prefix(8))")
             self?.sessionStore.handleMessage(message, respond: nil)
         }
         hermesDesktopWatcher.start()
@@ -137,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hermesDesktopWatcher.stop()
         socketServer.stop()
         cleanupPidFile()
+        Log.shutdown()
     }
 
     private func setupDirectories() {

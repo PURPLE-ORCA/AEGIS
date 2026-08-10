@@ -558,7 +558,7 @@ final class SessionStore: ObservableObject {
             }
         }
 
-        Log.info("Question answers: \(answersByText)")
+        Log.info("Question answered for session=\(sessionId.prefix(8)), count=\(answersByText.count)")
 
         // Clear immediately so nextPendingQuestion() won't find it again
         sessions[sessionId]?.pendingQuestion = nil
