@@ -181,6 +181,7 @@ struct NotchContentView: View {
                         sessionStore.deferQuestionToTerminal(sessionId: sessionId)
                         if !showNextPending() { viewModel.dismissQuestion() }
                     },
+                    onDismiss: { viewModel.dismissQuestion() },
                     rateLimitStore: rateLimitStore,
                     settingsStore: settingsStore,
                     onOpenSettings: onOpenSettings

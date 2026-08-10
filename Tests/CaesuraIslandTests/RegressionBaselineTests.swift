@@ -16,6 +16,13 @@ final class RegressionBaselineTests: XCTestCase {
         XCTAssertEqual(session.displayName, "caesura-project")
     }
 
+    func testQuestionResponseCapabilitiesAreExplicit() {
+        XCTAssertEqual(AIProvider.codex.questionResponseMode, .providerApp)
+        XCTAssertEqual(AIProvider.hermes.questionResponseMode, .providerApp)
+        XCTAssertEqual(AIProvider.opencode.questionResponseMode, .inline)
+        XCTAssertEqual(AIProvider.antigravity.questionResponseMode, .inline)
+    }
+
     func testMarkdownBlocksPreserveCodeAndProseOrder() {
         let blocks = MarkdownText.blocks(from: "Before\n```swift\nlet answer = 42\n```\nAfter")
 

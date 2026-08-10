@@ -8,6 +8,7 @@ struct QuestionView: View {
     /// to a structured dict avoids `|`-collision (issue #26).
     let onSubmit: ([String: String]) -> Void
     let onDeferToTerminal: () -> Void
+    let onDismiss: () -> Void
     @ObservedObject var rateLimitStore: RateLimitStore
     @ObservedObject var settingsStore: SettingsStore
     let onOpenSettings: () -> Void
@@ -23,6 +24,10 @@ struct QuestionView: View {
         question.questions.allSatisfy { q in
             !(selections[q.id] ?? []).isEmpty || !(customAnswers[q.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty
         }
+    }
+
+    private var acceptsInlineAnswers: Bool {
+        session.provider.questionResponseMode == .inline
     }
 
     var body: some View {
@@ -80,7 +85,7 @@ struct QuestionView: View {
                 .padding(.bottom, 12)
             }
 
-            if session.source != "codex" && session.source != "hermes" {
+            if acceptsInlineAnswers {
                 Divider().background(Color.white.opacity(0.08))
 
                 // Bottom action row for providers that support question responses.
@@ -132,6 +137,24 @@ struct QuestionView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
+            } else {
+                Divider().background(Color.white.opacity(0.08))
+
+                Button(action: onDismiss) {
+                    Text("Dismiss")
+                        .font(theme.font(size: 12, weight: .bold))
+                        .foregroundColor(theme.buttonInk(.white.opacity(0.8)).text)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .notchButton(
+                            theme,
+                            fill: theme.buttonInk(.white.opacity(0.8)).fill,
+                            stroke: theme.buttonInk(.white.opacity(0.8)).stroke
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -144,7 +167,7 @@ struct QuestionView: View {
             Text(q.question)
                 .font(theme.font(size: 14, weight: .bold))
                 .foregroundColor(.white)
-                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
 
             // Counter chip
             HStack(spacing: 5) {
@@ -161,64 +184,83 @@ struct QuestionView: View {
             .padding(.vertical, 3)
             .notchPill(theme, fill: .white.opacity(0.05))
 
-            // Option pills
-            FlowLayout(spacing: 6) {
-                ForEach(q.options) { option in
-                    let isSelected = selections[q.id]?.contains(option.id) ?? false
+            if acceptsInlineAnswers {
+                // Option pills
+                FlowLayout(spacing: 6) {
+                    ForEach(q.options) { option in
+                        let isSelected = selections[q.id]?.contains(option.id) ?? false
 
-                    Button(action: {
-                        toggleSelection(questionId: q.id, optionId: option.id, multiSelect: q.multiSelect)
-                    }) {
-                        HStack(spacing: 5) {
-                            if isSelected {
-                                Image(systemName: q.multiSelect ? "checkmark.square.fill" : "checkmark")
-                                    .font(.system(size: 9, weight: .bold))
+                        Button(action: {
+                            toggleSelection(questionId: q.id, optionId: option.id, multiSelect: q.multiSelect)
+                        }) {
+                            HStack(spacing: 5) {
+                                if isSelected {
+                                    Image(systemName: q.multiSelect ? "checkmark.square.fill" : "checkmark")
+                                        .font(.system(size: 9, weight: .bold))
+                                }
+                                Text(option.label)
+                                    .font(theme.font(size: 11, weight: isSelected ? .bold : .regular))
                             }
-                            Text(option.label)
-                                .font(theme.font(size: 11, weight: isSelected ? .bold : .regular))
+                            .foregroundColor(isSelected ? .cyan : .white.opacity(0.8))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .notchPill(theme, fill: isSelected ? Color.cyan.opacity(0.12) : Color.white.opacity(0.06), stroke: isSelected ? Color.cyan.opacity(0.7) : Color.white.opacity(0.12), base: 20)
                         }
-                        .foregroundColor(isSelected ? .cyan : .white.opacity(0.8))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .notchPill(theme, fill: isSelected ? Color.cyan.opacity(0.12) : Color.white.opacity(0.06), stroke: isSelected ? Color.cyan.opacity(0.7) : Color.white.opacity(0.12), base: 20)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
-            }
 
-            // "or type your own" divider
-            HStack(spacing: 10) {
-                Rectangle()
-                    .fill(.white.opacity(0.12))
-                    .frame(height: 1)
-                Text("or type your own")
-                    .font(theme.font(size: 9))
-                    .foregroundColor(.white.opacity(0.4))
-                    .kerning(0.3)
-                Rectangle()
-                    .fill(.white.opacity(0.12))
-                    .frame(height: 1)
-            }
-            .padding(.top, 4)
+                // "or type your own" divider
+                HStack(spacing: 10) {
+                    Rectangle()
+                        .fill(.white.opacity(0.12))
+                        .frame(height: 1)
+                    Text("or type your own")
+                        .font(theme.font(size: 9))
+                        .foregroundColor(.white.opacity(0.4))
+                        .kerning(0.3)
+                    Rectangle()
+                        .fill(.white.opacity(0.12))
+                        .frame(height: 1)
+                }
+                .padding(.top, 4)
 
-            // Text input
-            HStack(spacing: 8) {
-                Text("›")
-                    .font(theme.font(size: 14, weight: .heavy))
-                    .foregroundColor(.cyan.opacity(0.7))
-                TextField("", text: Binding(
-                    get: { customAnswers[q.id] ?? "" },
-                    set: { customAnswers[q.id] = $0; showWarning = false }
-                ), prompt: Text("Type a custom answer...").foregroundColor(theme.wellForeground.opacity(0.3)))
-                    .textFieldStyle(.plain)
-                    .font(theme.font(size: 12))
-                    .foregroundColor(theme.wellForeground)
-                    .focused($inputFocused)
-                    .onSubmit { submit() }
+                // Text input
+                HStack(spacing: 8) {
+                    Text("›")
+                        .font(theme.font(size: 14, weight: .heavy))
+                        .foregroundColor(.cyan.opacity(0.7))
+                    TextField("", text: Binding(
+                        get: { customAnswers[q.id] ?? "" },
+                        set: { customAnswers[q.id] = $0; showWarning = false }
+                    ), prompt: Text("Type a custom answer...").foregroundColor(theme.wellForeground.opacity(0.3)))
+                        .textFieldStyle(.plain)
+                        .font(theme.font(size: 12))
+                        .foregroundColor(theme.wellForeground)
+                        .focused($inputFocused)
+                        .onSubmit { submit() }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .notchBox(theme)
+            } else {
+                FlowLayout(spacing: 6) {
+                    ForEach(q.options) { option in
+                        Text(option.label)
+                            .font(theme.font(size: 11))
+                            .foregroundColor(.white.opacity(0.72))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .notchPill(
+                                theme,
+                                fill: Color.white.opacity(0.05),
+                                stroke: Color.white.opacity(0.12),
+                                base: 20
+                            )
+                    }
+                }
+                .accessibilityLabel("Available answers")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .notchBox(theme)
         }
     }
 
