@@ -14,15 +14,17 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
     private let onReloadSounds: () -> Void
     private let onPreviewEvent: (SoundEvent) -> Void
     private let onPreviewFile: (String) -> Void
+    private let onShowWelcome: () -> Void
     private let onShowWhatsNew: () -> Void
     private var settingsWindow: NSWindow?
 
-    init(settingsStore: SettingsStore, sessionStore: SessionStore, onReloadSounds: @escaping () -> Void, onPreviewEvent: @escaping (SoundEvent) -> Void, onPreviewFile: @escaping (String) -> Void, onShowWhatsNew: @escaping () -> Void, onQuit: @escaping () -> Void) {
+    init(settingsStore: SettingsStore, sessionStore: SessionStore, onReloadSounds: @escaping () -> Void, onPreviewEvent: @escaping (SoundEvent) -> Void, onPreviewFile: @escaping (String) -> Void, onShowWelcome: @escaping () -> Void, onShowWhatsNew: @escaping () -> Void, onQuit: @escaping () -> Void) {
         self.settingsStore = settingsStore
         self.sessionStore = sessionStore
         self.onReloadSounds = onReloadSounds
         self.onPreviewEvent = onPreviewEvent
         self.onPreviewFile = onPreviewFile
+        self.onShowWelcome = onShowWelcome
         self.onShowWhatsNew = onShowWhatsNew
         self.onQuit = onQuit
         super.init()
@@ -75,6 +77,10 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
         let whatsNewItem = NSMenuItem(title: "What's New", action: #selector(showWhatsNew), keyEquivalent: "")
         whatsNewItem.target = self
         menu.addItem(whatsNewItem)
+
+        let welcomeItem = NSMenuItem(title: "Welcome", action: #selector(showWelcome), keyEquivalent: "")
+        welcomeItem.target = self
+        menu.addItem(welcomeItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -170,6 +176,10 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
 
     @objc private func showWhatsNew() {
         onShowWhatsNew()
+    }
+
+    @objc private func showWelcome() {
+        onShowWelcome()
     }
 
     @objc private func quit() {

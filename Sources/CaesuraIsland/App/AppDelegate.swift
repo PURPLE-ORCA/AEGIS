@@ -89,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onReloadSounds: { [weak self] in self?.soundEngine.reloadSounds() },
             onPreviewEvent: { [weak self] ev in self?.soundEngine.preview(ev) },
             onPreviewFile: { [weak self] name in self?.soundEngine.previewFile(name) },
+            onShowWelcome: { [weak self] in self?.showOnboarding() },
             onShowWhatsNew: { [weak self] in self?.showWhatsNew() },
             onQuit: { NSApp.terminate(nil) }
         )
@@ -127,18 +128,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
         codexAppServer.start()
 
-        // Show the (redesigned) onboarding when the user hasn't seen it yet —
-        // fresh installs and existing users updating into this version. Gated on
-        // its own flag so it shows exactly once, never again on later updates.
+        // Never activate a first-run window automatically: the notch is a
+        // background utility and must not steal focus. Welcome and What's New
+        // remain available from the menu bar.
         if !settingsStore.hasSeenThemeOnboarding {
-            showOnboarding()
-            // Fresh-install onboarding already covers everything — don't also
-            // pop What's New; stamp the current version so it's considered seen.
-            settingsStore.lastWhatsNewVersion = currentVersion
-        } else if settingsStore.lastWhatsNewVersion != currentVersion {
-            // Returning user who just updated → show the What's New highlights.
-            showWhatsNew()
+            settingsStore.hasSeenThemeOnboarding = true
         }
+        settingsStore.lastWhatsNewVersion = currentVersion
 
     }
 
