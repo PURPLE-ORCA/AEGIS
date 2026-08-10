@@ -3,6 +3,7 @@ import SwiftUI
 struct SessionCardView: View {
     @Environment(\.notchTheme) private var theme
     let session: Session
+    var compact = false
     var onDone: (() -> Void)? = nil
 
     private var isActive: Bool {
@@ -37,7 +38,7 @@ struct SessionCardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: compact ? 6 : 8) {
             // Row 1: mascot + title + effort + time
             HStack(spacing: 8) {
                 SessionMascot(status: session.status, size: 18, provider: session.provider)
@@ -69,7 +70,7 @@ struct SessionCardView: View {
                 Text(prompt)
                     .font(theme.font(size: 11))
                     .foregroundColor(theme.cardForeground.opacity(0.7))
-                    .lineLimit(2)
+                    .lineLimit(compact ? 1 : 2)
                     .multilineTextAlignment(.leading)
             }
 
@@ -81,7 +82,7 @@ struct SessionCardView: View {
             }
 
             // Idle conversation sub-box
-            if session.status == .idle, session.lastAssistantMessage != nil {
+            if !compact, session.status == .idle, session.lastAssistantMessage != nil {
                 VStack(alignment: .leading, spacing: 6) {
                     if let msg = session.lastUserMessage {
                         HStack(alignment: .top, spacing: 6) {
@@ -130,8 +131,8 @@ struct SessionCardView: View {
                 )
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, compact ? 10 : 12)
+        .padding(.vertical, compact ? 8 : 10)
         .notchCard(theme, tint: cardTint, active: isActive, ink: cardInk)
         .contentShape(Rectangle())
         .overlay {

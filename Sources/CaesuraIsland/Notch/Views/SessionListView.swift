@@ -15,18 +15,6 @@ struct SessionListView: View {
     /// behind the section header until expanded again.
     @State private var collapsedProviders: Set<String> = []
 
-    /// Which provider's rate limits to render in the bar. When a filter is
-    /// active we follow it; otherwise we show the provider whose session most
-    /// recently saw activity (or fall back to Codex if there are no sessions).
-    private var rateLimitProvider: AIProvider {
-        if let sel = selectedProvider { return sel }
-        if let latest = sessionStore.activeSessions.values
-            .sorted(by: { $0.lastActivityAt > $1.lastActivityAt }).first {
-            return latest.provider
-        }
-        return .codex
-    }
-
     /// Tapping the rate limit bar cycles selectedProvider through every
     /// provider that actually has data to show, skipping ones that would
     /// just render as "—" (no auth / no data). If no provider has data we
@@ -39,7 +27,10 @@ struct SessionListView: View {
             return snap.fiveHour != nil || snap.sevenDay != nil
         }
         let cycleList = withData.isEmpty ? providers : withData
-        let current = rateLimitProvider
+        let current = SessionListProjection(
+            sessions: Array(sessionStore.activeSessions.values),
+            selectedProvider: selectedProvider
+        ).rateLimitProvider
         guard let idx = cycleList.firstIndex(of: current) else {
             selectedProvider = cycleList.first
             return
@@ -47,31 +38,18 @@ struct SessionListView: View {
         selectedProvider = cycleList[(idx + 1) % cycleList.count]
     }
 
-    /// Providers that actually have at least one active session — used to render
-    /// section headers AND drive which filter chips are visible.
-    private var presentProviders: [AIProvider] {
-        let ids = Set(sessionStore.activeSessions.values.map { $0.source })
-        return AIProvider.all.filter { ids.contains($0.id) }
-    }
-
-    private func sessions(for provider: AIProvider) -> [Session] {
-        sessionStore.activeSessions.values
-            .filter { $0.source == provider.id }
-            .sorted(by: { $0.startedAt > $1.startedAt })
-    }
-
-    private var visibleProviders: [AIProvider] {
-        if let sel = selectedProvider { return [sel] }
-        return presentProviders
-    }
-
     var body: some View {
+        let projection = SessionListProjection(
+            sessions: Array(sessionStore.activeSessions.values),
+            selectedProvider: selectedProvider
+        )
+
         VStack(spacing: 0) {
             // Top row: rate limits + sound + gear
             HStack(spacing: 8) {
                 RateLimitBar(
                     rateLimitStore: rateLimitStore,
-                    provider: rateLimitProvider,
+                    provider: projection.rateLimitProvider,
                     onTap: cycleRateLimitProvider
                 )
                 Spacer()
@@ -95,12 +73,12 @@ struct SessionListView: View {
             // Filter chips — only show when there are >=2 providers active.
             // Horizontally scrollable so many providers (we support a dozen+)
             // keep their natural width instead of compressing into slivers.
-            if presentProviders.count >= 2 {
+            if projection.presentProviders.count >= 2 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 5) {
                         filterChip(provider: nil, label: "ALL", count: sessionStore.activeSessions.count, color: .white)
-                        ForEach(presentProviders) { p in
-                            filterChip(provider: p, label: p.displayName.uppercased(), count: sessions(for: p).count, color: p.accentColor)
+                        ForEach(projection.presentProviders) { p in
+                            filterChip(provider: p, label: p.displayName.uppercased(), count: projection.sessions(for: p).count, color: p.accentColor)
                         }
                     }
                     .padding(.horizontal, 14)
@@ -125,16 +103,16 @@ struct SessionListView: View {
                 Spacer()
             } else {
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 12) {
-                        ForEach(visibleProviders) { provider in
-                            let cards = sessions(for: provider)
+                    LazyVStack(spacing: 12) {
+                        ForEach(projection.visibleProviders) { provider in
+                            let cards = projection.sessions(for: provider)
                             if !cards.isEmpty {
                                 let isCollapsed = collapsedProviders.contains(provider.id)
                                 VStack(alignment: .leading, spacing: 6) {
                                     // Section header — also the collapse toggle.
                                     // Shown when we're displaying more than one
                                     // provider OR a filter is active.
-                                    if visibleProviders.count >= 2 || selectedProvider != nil {
+                                    if projection.visibleProviders.count >= 2 || selectedProvider != nil {
                                         sectionHeader(
                                             provider: provider,
                                             count: cards.count,
@@ -153,9 +131,12 @@ struct SessionListView: View {
                                         }
                                     }
                                     if !isCollapsed {
-                                        VStack(spacing: 6) {
+                                        LazyVStack(spacing: 6) {
                                             ForEach(cards, id: \.id) { session in
-                                                SessionCardView(session: session)
+                                                SessionCardView(
+                                                    session: session,
+                                                    compact: projection.usesCompactCards
+                                                )
                                             }
                                         }
                                     }
@@ -169,6 +150,10 @@ struct SessionListView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onChange(of: projection.presentProviderIDs) { _, ids in
+            guard let selectedProvider, !ids.contains(selectedProvider.id) else { return }
+            self.selectedProvider = nil
+        }
     }
 
     @ViewBuilder
@@ -214,6 +199,73 @@ struct SessionListView: View {
                 .font(.system(size: 8, weight: .bold))
                 .foregroundColor(.white.opacity(0.4))
                 .rotationEffect(.degrees(collapsed ? 0 : 90))
+        }
+    }
+}
+
+/// A single snapshot of the active-session list. Keeping grouping, sorting and
+/// filter recovery out of the view avoids repeating the same dictionary scan
+/// throughout a SwiftUI body update.
+struct SessionListProjection {
+    static let compactCardThreshold = 4
+
+    let sessions: [Session]
+    let presentProviders: [AIProvider]
+    let visibleProviders: [AIProvider]
+    let rateLimitProvider: AIProvider
+
+    private let sessionsByProvider: [String: [Session]]
+
+    init(sessions: [Session], selectedProvider: AIProvider?) {
+        self.sessions = sessions
+
+        let grouped = Dictionary(grouping: sessions, by: \.source)
+            .mapValues { providerSessions in
+                providerSessions.sorted(by: Self.isHigherPriority)
+            }
+        sessionsByProvider = grouped
+
+        presentProviders = AIProvider.all.filter { grouped[$0.id]?.isEmpty == false }
+
+        if let selectedProvider, grouped[selectedProvider.id]?.isEmpty == false {
+            visibleProviders = [selectedProvider]
+            rateLimitProvider = selectedProvider
+        } else {
+            visibleProviders = presentProviders
+            rateLimitProvider = sessions.max(by: {
+                $0.lastActivityAt < $1.lastActivityAt
+            })?.provider ?? .codex
+        }
+    }
+
+    var presentProviderIDs: [String] {
+        presentProviders.map(\.id)
+    }
+
+    var usesCompactCards: Bool {
+        sessions.count >= Self.compactCardThreshold
+    }
+
+    func sessions(for provider: AIProvider) -> [Session] {
+        sessionsByProvider[provider.id] ?? []
+    }
+
+    private static func isHigherPriority(_ lhs: Session, _ rhs: Session) -> Bool {
+        let lhsPriority = priority(of: lhs.status)
+        let rhsPriority = priority(of: rhs.status)
+        if lhsPriority != rhsPriority { return lhsPriority < rhsPriority }
+        if lhs.lastActivityAt != rhs.lastActivityAt {
+            return lhs.lastActivityAt > rhs.lastActivityAt
+        }
+        return lhs.startedAt > rhs.startedAt
+    }
+
+    private static func priority(of status: SessionStatus) -> Int {
+        switch status {
+        case .waitingPermission: return 0
+        case .error: return 1
+        case .toolUse, .thinking: return 2
+        case .idle, .completed: return 3
         }
     }
 }
