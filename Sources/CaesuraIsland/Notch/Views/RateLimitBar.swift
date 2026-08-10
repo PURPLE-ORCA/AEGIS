@@ -12,6 +12,21 @@ struct RateLimitBar: View {
 
     var body: some View {
         let snapshot = rateLimitStore.snapshot(for: provider)
+        if let onTap {
+            Button(action: onTap) {
+                content(snapshot: snapshot)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(provider.displayName) usage limits")
+            .accessibilityHint("Shows the next provider")
+        } else {
+            content(snapshot: snapshot)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(provider.displayName) usage limits")
+        }
+    }
+
+    private func content(snapshot: ProviderUsage) -> some View {
         HStack(spacing: 5) {
             // Provider logo up front — disambiguates whose rate limit this is.
             ProviderIcon(provider: provider, size: 12)
@@ -55,9 +70,6 @@ struct RateLimitBar: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            onTap?()
-        }
     }
 
     private func colorForRemaining(_ pct: Int) -> Color {

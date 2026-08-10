@@ -51,11 +51,6 @@ struct NotchContentView: View {
             }
         }
         .environment(\.notchTheme, theme)
-        .onTapGesture {
-            if case .collapsed = viewModel.state {
-                activateCollapsed()
-            }
-        }
         .onHover { hovering in
             if hovering {
                 viewModel.mouseEntered()
@@ -107,7 +102,13 @@ struct NotchContentView: View {
     private var content: some View {
         switch viewModel.state {
         case .collapsed:
-            CollapsedNotchView(sessionStore: sessionStore, rateLimitStore: rateLimitStore)
+            Button(action: activateCollapsed) {
+                CollapsedNotchView(sessionStore: sessionStore, rateLimitStore: rateLimitStore)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open CAESURA-ISLAND")
+            .accessibilityHint("Shows active sessions and pending decisions")
 
         case .expanded:
             SessionListView(

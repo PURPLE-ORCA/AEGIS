@@ -11,6 +11,7 @@ struct SessionListView: View {
 
     /// nil = "ALL"; otherwise filter to a single provider.
     @State private var selectedProvider: AIProvider? = nil
+    @State private var selectedRateLimitProvider: AIProvider? = nil
     /// Provider ids that the user has collapsed — their cards are hidden
     /// behind the section header until expanded again.
     @State private var collapsedProviders: Set<String> = []
@@ -20,22 +21,18 @@ struct SessionListView: View {
     /// just render as "—" (no auth / no data). If no provider has data we
     /// fall through to the default cycle so the user can still flip away
     /// from a stale state.
-    private func cycleRateLimitProvider() {
+    private func cycleRateLimitProvider(current: AIProvider) {
         let providers = AIProvider.all
         let withData = providers.filter { p in
             let snap = rateLimitStore.snapshot(for: p)
             return snap.fiveHour != nil || snap.sevenDay != nil
         }
         let cycleList = withData.isEmpty ? providers : withData
-        let current = SessionListProjection(
-            sessions: Array(sessionStore.activeSessions.values),
-            selectedProvider: selectedProvider
-        ).rateLimitProvider
         guard let idx = cycleList.firstIndex(of: current) else {
-            selectedProvider = cycleList.first
+            selectedRateLimitProvider = cycleList.first
             return
         }
-        selectedProvider = cycleList[(idx + 1) % cycleList.count]
+        selectedRateLimitProvider = cycleList[(idx + 1) % cycleList.count]
     }
 
     var body: some View {
@@ -43,28 +40,35 @@ struct SessionListView: View {
             sessions: Array(sessionStore.activeSessions.values),
             selectedProvider: selectedProvider
         )
+        let displayedRateLimitProvider = selectedRateLimitProvider ?? projection.rateLimitProvider
 
         VStack(spacing: 0) {
             // Top row: rate limits + sound + gear
             HStack(spacing: 8) {
                 RateLimitBar(
                     rateLimitStore: rateLimitStore,
-                    provider: projection.rateLimitProvider,
-                    onTap: cycleRateLimitProvider
+                    provider: displayedRateLimitProvider,
+                    onTap: { cycleRateLimitProvider(current: displayedRateLimitProvider) }
                 )
                 Spacer()
                 Button(action: { settingsStore.soundEnabled.toggle() }) {
                     Image(systemName: settingsStore.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
                         .font(.system(size: 14))
                         .foregroundColor(.white.opacity(settingsStore.soundEnabled ? 0.6 : 0.3))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(settingsStore.soundEnabled ? "Mute sounds" : "Unmute sounds")
                 Button(action: onOpenSettings) {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 14))
                         .foregroundColor(.white.opacity(0.4))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Open settings")
             }
             .padding(.horizontal, 14)
             .padding(.top, 10)
@@ -113,14 +117,7 @@ struct SessionListView: View {
                                     // Shown when we're displaying more than one
                                     // provider OR a filter is active.
                                     if projection.visibleProviders.count >= 2 || selectedProvider != nil {
-                                        sectionHeader(
-                                            provider: provider,
-                                            count: cards.count,
-                                            collapsed: isCollapsed
-                                        )
-                                        .padding(.horizontal, 4)
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
+                                        Button {
                                             withAnimation(.easeInOut(duration: 0.18)) {
                                                 if isCollapsed {
                                                     collapsedProviders.remove(provider.id)
@@ -128,7 +125,18 @@ struct SessionListView: View {
                                                     collapsedProviders.insert(provider.id)
                                                 }
                                             }
+                                        } label: {
+                                            sectionHeader(
+                                                provider: provider,
+                                                count: cards.count,
+                                                collapsed: isCollapsed
+                                            )
+                                            .padding(.horizontal, 4)
+                                            .contentShape(Rectangle())
                                         }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("\(provider.displayName), \(cards.count) sessions")
+                                        .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
                                     }
                                     if !isCollapsed {
                                         LazyVStack(spacing: 6) {

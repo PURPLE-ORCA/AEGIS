@@ -118,8 +118,14 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
             for (offset, session) in active.enumerated() {
                 let name = session.displayName.isEmpty ? session.projectName : session.displayName
                 let providerLabel = session.provider.displayName
-                let item = NSMenuItem(title: "  \(providerLabel) · \(name)", action: nil, keyEquivalent: "")
-                item.isEnabled = false
+                let item = NSMenuItem(
+                    title: "  \(providerLabel) · \(name)",
+                    action: #selector(openSessionFromMenu(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = session.id
+                item.isEnabled = true
                 item.tag = TagSessionEntry
                 menu.insertItem(item, at: headerIdx + 1 + offset)
             }
@@ -136,6 +142,12 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
            let item = menu.items.first(where: { $0.action == #selector(toggleSound) }) {
             item.state = settingsStore.soundEnabled ? .on : .off
         }
+    }
+
+    @objc private func openSessionFromMenu(_ sender: NSMenuItem) {
+        guard let sessionId = sender.representedObject as? String,
+              let session = sessionStore.sessions[sessionId] else { return }
+        TerminalJumper.jump(to: session)
     }
 
     @objc private func openSettings() {

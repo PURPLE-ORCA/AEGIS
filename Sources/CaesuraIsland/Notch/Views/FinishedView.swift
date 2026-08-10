@@ -25,6 +25,7 @@ struct FinishedView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(settingsStore.soundEnabled ? "Mute sounds" : "Unmute sounds")
                 Button(action: onOpenSettings) {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 14))
@@ -33,6 +34,7 @@ struct FinishedView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Open settings")
             }
             .padding(.horizontal, 14)
             .padding(.top, 10)

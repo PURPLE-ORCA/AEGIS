@@ -40,14 +40,20 @@ struct QuestionView: View {
                     Image(systemName: settingsStore.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
                         .font(.system(size: 14))
                         .foregroundColor(.white.opacity(settingsStore.soundEnabled ? 0.6 : 0.3))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(settingsStore.soundEnabled ? "Mute sounds" : "Unmute sounds")
                 Button(action: onOpenSettings) {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 14))
                         .foregroundColor(.white.opacity(0.4))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Open settings")
             }
             .padding(.horizontal, 14)
             .padding(.top, 10)
