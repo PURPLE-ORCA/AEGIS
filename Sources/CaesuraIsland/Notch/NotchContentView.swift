@@ -134,6 +134,7 @@ struct NotchContentView: View {
                             let hasUser = session.lastUserMessage != nil
                             let replyLines = session.lastAssistantMessage.map { NotchViewModel.estimateVisualLinesPublic($0) } ?? 0
                             viewModel.dynamicFinishedHeight = NotchViewModel.computeFinishedHeight(hasUser: hasUser, replyLines: replyLines)
+                            viewModel.resumeFinishedAutoCollapse()
                         }
                     }
                 )

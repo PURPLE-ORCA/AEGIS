@@ -11,6 +11,14 @@ enum NotchState: Equatable {
 
 @MainActor
 final class NotchViewModel: ObservableObject {
+    enum AutoCollapseDecision: Equatable {
+        case collapse
+        case rearm(TimeInterval)
+        case pause
+    }
+
+    static let finishedHoverCeiling: TimeInterval = 15
+
     // MARK: - Published State
     @Published var state: NotchState = .collapsed
     @Published var isHovered = false
@@ -133,6 +141,7 @@ final class NotchViewModel: ObservableObject {
 
     // MARK: - Auto-collapse
     private var autoCollapseTask: Task<Void, Never>?
+    private var finishedAutoCollapseDeadline: Date?
 
     func expand(holdSeconds: Double? = nil) {
         guard state == .collapsed else { return }
@@ -143,6 +152,7 @@ final class NotchViewModel: ObservableObject {
     func collapse() {
         guard state != .collapsed else { return }
         state = .collapsed
+        finishedAutoCollapseDeadline = nil
         autoCollapseTask?.cancel()
     }
 
@@ -160,6 +170,7 @@ final class NotchViewModel: ObservableObject {
 
     func showFinished(sessionId: String, contentHeight: CGFloat? = nil) {
         autoCollapseTask?.cancel()
+        finishedAutoCollapseDeadline = Date().addingTimeInterval(Self.finishedHoverCeiling)
         dynamicFinishedHeight = contentHeight
         state = .finished(sessionId: sessionId)
         scheduleAutoCollapse(delay: 3.0)
@@ -184,19 +195,51 @@ final class NotchViewModel: ObservableObject {
         state = .collapsed
     }
 
+    /// Called after a user closes an expanded reply. It starts a fresh bounded
+    /// dismissal window instead of leaving the compact result open forever.
+    func resumeFinishedAutoCollapse() {
+        guard case .finished = state else { return }
+        finishedAutoCollapseDeadline = Date().addingTimeInterval(Self.finishedHoverCeiling)
+        scheduleAutoCollapse(delay: 3.0)
+    }
+
     private func scheduleAutoCollapse(delay: Double = 0.6) {
         autoCollapseTask?.cancel()
         autoCollapseTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, isExpanded else { return }
-            if isHovered {
-                // Re-arm with a short delay so the finished card eventually
-                // collapses even if the cursor stays parked over the notch
-                // (issue #27). Cap the total wait at ~15s as a hard ceiling.
-                scheduleAutoCollapse(delay: 0.6)
-            } else {
+            switch Self.autoCollapseDecision(
+                state: state,
+                isHovered: isHovered,
+                finishedDeadline: finishedAutoCollapseDeadline,
+                now: Date()
+            ) {
+            case .collapse:
                 collapse()
+            case .rearm(let nextDelay):
+                scheduleAutoCollapse(delay: nextDelay)
+            case .pause:
+                break
             }
+        }
+    }
+
+    static func autoCollapseDecision(
+        state: NotchState,
+        isHovered: Bool,
+        finishedDeadline: Date?,
+        now: Date
+    ) -> AutoCollapseDecision {
+        switch state {
+        case .collapsed, .permission, .question:
+            return .pause
+        case .finished:
+            guard let finishedDeadline else { return .collapse }
+            let remaining = finishedDeadline.timeIntervalSince(now)
+            guard remaining > 0 else { return .collapse }
+            return isHovered ? .rearm(min(0.6, remaining)) : .collapse
+        case .expanded:
+            return isHovered ? .rearm(0.6) : .collapse
         }
     }
 
