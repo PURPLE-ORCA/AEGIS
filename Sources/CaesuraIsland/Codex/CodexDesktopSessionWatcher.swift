@@ -12,15 +12,18 @@ final class CodexDesktopSessionWatcher {
         var tools: [String: String] = [:]
     }
 
-    private let root = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".codex/sessions")
+    private let root: URL
     private let queue = DispatchQueue(label: "dev.caesura.island.codex-desktop", qos: .utility)
     private var monitor: FileEventMonitor?
     private var offsets: [String: UInt64] = [:]
     private var buffers: [String: Data] = [:]
     private var states: [String: SessionState] = [:]
 
-    func start() {
+    init(root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions")) {
+        self.root = root.resolvingSymlinksInPath().standardizedFileURL
+    }
+
+    func start(completion: (() -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self else { return }
             self.seedExistingFiles()
@@ -35,6 +38,7 @@ final class CodexDesktopSessionWatcher {
             self.monitor = monitor
             monitor.start()
             Log.info("Codex Desktop watcher started at \(self.root.path)")
+            completion?()
         }
     }
 
@@ -53,9 +57,8 @@ final class CodexDesktopSessionWatcher {
         ) else { return }
 
         for case let url as URL in enumerator where url.pathExtension == "jsonl" {
-            let path = url.path
+            let path = canonicalPath(url)
             offsets[path] = fileSize(url)
-            states[path] = readMetadata(url)
         }
     }
 
@@ -64,7 +67,7 @@ final class CodexDesktopSessionWatcher {
         for path in paths {
             let url = URL(fileURLWithPath: path)
             if url.pathExtension == "jsonl" {
-                files.insert(path)
+                files.insert(canonicalPath(url))
             } else if url.hasDirectoryPath || FileManager.default.fileExists(atPath: path) {
                 discoverJSONLFiles(at: url, into: &files)
             }
@@ -79,12 +82,19 @@ final class CodexDesktopSessionWatcher {
             options: [.skipsHiddenFiles]
         ) else { return }
         for case let child as URL in enumerator where child.pathExtension == "jsonl" {
-            files.insert(child.path)
+            files.insert(canonicalPath(child))
         }
     }
 
     private func readAppendedLines(at url: URL) {
-        let path = url.path
+        let path = canonicalPath(url)
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: path) else {
+            offsets[path] = nil
+            buffers[path] = nil
+            states[path] = nil
+            return
+        }
         let size = fileSize(url)
         let isNew = offsets[path] == nil
         var offset = offsets[path] ?? 0
@@ -92,6 +102,9 @@ final class CodexDesktopSessionWatcher {
             offset = 0
             buffers[path] = nil
             states[path] = SessionState()
+        }
+        if states[path] == nil {
+            states[path] = readMetadata(url)
         }
         guard size > offset, let handle = try? FileHandle(forReadingFrom: url) else { return }
         defer { try? handle.close() }
@@ -176,6 +189,10 @@ final class CodexDesktopSessionWatcher {
     private func fileSize(_ url: URL) -> UInt64 {
         let values = try? url.resourceValues(forKeys: [.fileSizeKey])
         return UInt64(values?.fileSize ?? 0)
+    }
+
+    private func canonicalPath(_ url: URL) -> String {
+        url.resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     private func readMetadata(_ url: URL) -> SessionState {
