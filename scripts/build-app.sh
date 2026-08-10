@@ -62,4 +62,6 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 plutil -lint "$APP/Contents/Info.plist"
+codesign --force --deep --sign - "$APP"
+codesign --verify --deep --strict "$APP"
 echo "==> Done: $APP"
