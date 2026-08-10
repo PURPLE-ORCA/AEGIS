@@ -32,13 +32,14 @@ final class HermesDesktopSessionWatcher {
             self.lastMessageId = self.maximumMessageId()
             let monitor = FileEventMonitor(
                 root: self.root,
-                label: "dev.caesura.island.hermes-desktop.events"
+                label: "dev.caesura.island.hermes-desktop.events",
+                includeFile: { $0.lastPathComponent.hasPrefix("state.db") }
             ) { [weak self] paths in
-                guard paths.contains(where: { $0.contains("state.db") }) else { return }
                 self?.scheduleRefresh()
             }
             self.monitor = monitor
             monitor.start()
+            Log.info("Hermes Desktop watcher started at \(self.databaseURL.path), lastMessageId=\(self.lastMessageId)")
         }
     }
 

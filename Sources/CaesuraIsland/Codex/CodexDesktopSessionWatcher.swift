@@ -26,12 +26,15 @@ final class CodexDesktopSessionWatcher {
             self.seedExistingFiles()
             let monitor = FileEventMonitor(
                 root: self.root,
-                label: "dev.caesura.island.codex-desktop.events"
+                label: "dev.caesura.island.codex-desktop.events",
+                recursive: true,
+                includeFile: { $0.pathExtension == "jsonl" }
             ) { [weak self] paths in
                 self?.queue.async { self?.process(paths: paths) }
             }
             self.monitor = monitor
             monitor.start()
+            Log.info("Codex Desktop watcher started at \(self.root.path)")
         }
     }
 
