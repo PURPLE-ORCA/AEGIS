@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let soundEngine = SoundEngine()
     private let settingsStore = SettingsStore()
     private let rateLimitStore = RateLimitStore()
-    private let codexAppServer = CodexAppServerClient()
+    private let codexDesktopWatcher = CodexDesktopSessionWatcher()
     private var cancellables = Set<AnyCancellable>()
 
     private var currentVersion: String {
@@ -109,24 +109,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = ProviderInstaller.installAll()
         }
 
-        // Subscribe SessionStore to Codex app-server thread stream. This both
-        // surfaces resumed sessions immediately (Codex doesn't fire
-        // SessionStart hooks on resume — they only fire on the first prompt)
-        // and propagates user-renamed session titles.
-        codexAppServer.$threads
-            .sink { [weak self] threads in
-                self?.sessionStore.applyCodexThreads(threads)
-            }
-            .store(in: &cancellables)
-        // Critical for Codex cleanup: thread/closed from the daemon is the
-        // only reliable end-of-session signal (hooks go through the daemon
-        // process, so PID-based detection never fires).
-        codexAppServer.closedThreadIds
-            .sink { [weak self] threadId in
-                self?.sessionStore.handleCodexThreadClosed(threadId)
-            }
-            .store(in: &cancellables)
-        codexAppServer.start()
+        codexDesktopWatcher.onMessage = { [weak self] message in
+            self?.log("Codex Desktop: \(message.hookEvent) session=\(message.sessionId.prefix(8))")
+            self?.sessionStore.handleMessage(message, respond: nil)
+        }
+        codexDesktopWatcher.start()
 
         // Never activate a first-run window automatically: the notch is a
         // background utility and must not steal focus. Welcome and What's New
@@ -139,6 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        codexDesktopWatcher.stop()
         socketServer.stop()
         cleanupPidFile()
     }

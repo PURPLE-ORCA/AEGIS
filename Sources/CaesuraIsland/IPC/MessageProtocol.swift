@@ -27,6 +27,48 @@ struct BridgeMessage: Codable {
     /// Model name the agent is using, captured from the hook payload.
     let model: String?
 
+    init(
+        sessionId: String,
+        hookEvent: String,
+        cwd: String? = nil,
+        toolName: String? = nil,
+        toolInput: String? = nil,
+        notification: String? = nil,
+        env: [String: String]? = nil,
+        userMessage: String? = nil,
+        assistantMessage: String? = nil,
+        effortLevel: String? = nil,
+        durationMs: Int? = nil,
+        toolFilePath: String? = nil,
+        toolContent: String? = nil,
+        toolOldString: String? = nil,
+        toolNewString: String? = nil,
+        sessionTitle: String? = nil,
+        source: String? = nil,
+        agentPid: Int? = nil,
+        model: String? = nil
+    ) {
+        self.sessionId = sessionId
+        self.hookEvent = hookEvent
+        self.cwd = cwd
+        self.toolName = toolName
+        self.toolInput = toolInput
+        self.notification = notification
+        self.env = env
+        self.userMessage = userMessage
+        self.assistantMessage = assistantMessage
+        self.effortLevel = effortLevel
+        self.durationMs = durationMs
+        self.toolFilePath = toolFilePath
+        self.toolContent = toolContent
+        self.toolOldString = toolOldString
+        self.toolNewString = toolNewString
+        self.sessionTitle = sessionTitle
+        self.source = source
+        self.agentPid = agentPid
+        self.model = model
+    }
+
     var terminalInfo: TerminalInfo? {
         guard let env else { return nil }
         return TerminalInfo(
