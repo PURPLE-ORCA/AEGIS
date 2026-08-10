@@ -17,7 +17,8 @@ let package = Package(
             resources: [
                 .copy("../../Resources/cli-icons"),
                 .copy("../../Resources/branding"),
-            ]
+            ],
+            linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .executableTarget(
             name: "CaesuraIslandBridge",

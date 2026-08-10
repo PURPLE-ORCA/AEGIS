@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsStore = SettingsStore()
     private let rateLimitStore = RateLimitStore()
     private let codexDesktopWatcher = CodexDesktopSessionWatcher()
+    private let hermesDesktopWatcher = HermesDesktopSessionWatcher()
     private var cancellables = Set<AnyCancellable>()
 
     private var currentVersion: String {
@@ -115,6 +116,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         codexDesktopWatcher.start()
 
+        hermesDesktopWatcher.onMessage = { [weak self] message in
+            self?.log("Hermes Desktop: \(message.hookEvent) session=\(message.sessionId.prefix(8))")
+            self?.sessionStore.handleMessage(message, respond: nil)
+        }
+        hermesDesktopWatcher.start()
+
         // Never activate a first-run window automatically: the notch is a
         // background utility and must not steal focus. Welcome and What's New
         // remain available from the menu bar.
@@ -127,6 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         codexDesktopWatcher.stop()
+        hermesDesktopWatcher.stop()
         socketServer.stop()
         cleanupPidFile()
     }
