@@ -11,6 +11,11 @@ struct PermissionView: View {
 
     @Environment(\.notchTheme) private var theme
     @State private var isExpanded = false
+    @State private var preview: PermissionPreviewData?
+
+    private var previewInput: PermissionPreviewInput? {
+        PermissionPreviewInput(permission: permission)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -105,7 +110,7 @@ struct PermissionView: View {
             }
 
             // Content preview (Write content, Edit diff, or command/description)
-            if let preview = contentPreview() {
+            if let preview {
                 VStack(spacing: 0) {
                     HStack {
                         HStack(spacing: 5) {
@@ -139,9 +144,10 @@ struct PermissionView: View {
                             .fill(theme.boxFill)
                     )
 
-                    ScrollView {
+                    ScrollView(showsIndicators: false) {
                         Text(preview.attributed)
                             .font(theme.font(size: 11))
+                            .foregroundColor(theme.wellForeground.opacity(0.85))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
                             .padding(10)
@@ -157,6 +163,14 @@ struct PermissionView: View {
                         .strokeBorder(theme.boxStroke, lineWidth: theme.strokeWidth)
                 )
                 .padding(.horizontal, 14)
+            } else if previewInput != nil {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(theme.wellForeground.opacity(0.6))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 64)
+                    .notchBox(theme)
+                    .padding(.horizontal, 14)
             }
 
             Spacer(minLength: 12)
@@ -174,6 +188,18 @@ struct PermissionView: View {
             .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: PermissionPreviewTaskID(input: previewInput, lightWells: theme.lightWells)) {
+            guard let input = previewInput else {
+                preview = nil
+                return
+            }
+            let lightWells = theme.lightWells
+            let rendered = await Task.detached(priority: .userInitiated) {
+                PermissionPreviewRenderer.render(input, lightWells: lightWells)
+            }.value
+            guard !Task.isCancelled else { return }
+            preview = rendered
+        }
     }
 
     /// Icon, label, and color for each supported permission action.
@@ -247,63 +273,105 @@ struct PermissionView: View {
         return path
     }
 
-    private struct PreviewData {
-        let label: String
-        let metric: String
-        let attributed: AttributedString
-    }
+}
 
-    private func contentPreview() -> PreviewData? {
-        // Edit tool: show colored diff using real file line numbers
-        if let oldStr = permission.oldString, let newStr = permission.newString {
-            let lines = newStr.components(separatedBy: "\n").count
-            let oldLines = oldStr.components(separatedBy: "\n").count
-            let startLine = permission.filePath.map { SyntaxHighlighter.findStartLine(filePath: $0, needle: oldStr) } ?? 1
-            return PreviewData(
+struct PermissionPreviewInput: Hashable, Sendable {
+    let toolName: String
+    let filePath: String?
+    let content: String?
+    let description: String?
+    let oldString: String?
+    let newString: String?
+
+    init?(permission: PendingPermission) {
+        let hasEdit = permission.oldString != nil && permission.newString != nil
+        let hasContent = permission.content?.isEmpty == false
+        let hasStandaloneDescription = permission.filePath == nil && permission.description?.isEmpty == false
+        guard hasEdit || hasContent || hasStandaloneDescription else { return nil }
+
+        toolName = permission.toolName
+        filePath = permission.filePath
+        content = permission.content
+        description = permission.description
+        oldString = permission.oldString
+        newString = permission.newString
+    }
+}
+
+struct PermissionPreviewTaskID: Hashable {
+    let input: PermissionPreviewInput?
+    let lightWells: Bool
+}
+
+struct PermissionPreviewData: Sendable {
+    let label: String
+    let metric: String
+    let attributed: AttributedString
+}
+
+enum PermissionPreviewRenderer {
+    static func render(
+        _ input: PermissionPreviewInput,
+        lightWells: Bool
+    ) -> PermissionPreviewData? {
+        let syntaxTheme: SyntaxHighlighter.Theme = lightWells ? .light : .dark
+
+        if let oldString = input.oldString, let newString = input.newString {
+            let newLines = newString.components(separatedBy: "\n").count
+            let oldLines = oldString.components(separatedBy: "\n").count
+            let startLine = input.filePath.map {
+                SyntaxHighlighter.findStartLine(filePath: $0, needle: oldString)
+            } ?? 1
+            return PermissionPreviewData(
                 label: "edit",
-                metric: "−\(oldLines) +\(lines) lines",
-                attributed: SyntaxHighlighter.diff(old: oldStr, new: newStr, theme: theme.lightWells ? SyntaxHighlighter.Theme.light : SyntaxHighlighter.Theme.dark, startLine: startLine)
+                metric: "−\(oldLines) +\(newLines) lines",
+                attributed: SyntaxHighlighter.diff(
+                    old: oldString,
+                    new: newString,
+                    theme: syntaxTheme,
+                    startLine: startLine
+                )
             )
         }
-        // Write tool: show content with syntax highlighting (or WebFetch: show prompt plain)
-        if let content = permission.content, !content.isEmpty {
-            let tool = permission.toolName.lowercased()
-            let isWebFetch = tool == "webfetch"
+
+        if let content = input.content, !content.isEmpty {
+            let isWebFetch = input.toolName.lowercased() == "webfetch"
             let lines = content.components(separatedBy: "\n").count
-            let bytes = content.utf8.count
-            let attributed: AttributedString
-            if isWebFetch {
-                var s = AttributedString(content)
-                s.foregroundColor = theme.wellForeground.opacity(0.85)
-                attributed = s
-            } else {
-                attributed = SyntaxHighlighter.highlight(content, theme: theme.lightWells ? SyntaxHighlighter.Theme.light : SyntaxHighlighter.Theme.dark, withLineNumbers: true, startLine: 1)
-            }
-            return PreviewData(
+            return PermissionPreviewData(
                 label: isWebFetch ? "prompt" : "content",
-                metric: isWebFetch ? "" : "\(lines) line\(lines == 1 ? "" : "s") · \(formatBytes(bytes))",
-                attributed: attributed
+                metric: isWebFetch
+                    ? ""
+                    : "\(lines) line\(lines == 1 ? "" : "s") · \(formatBytes(content.utf8.count))",
+                attributed: isWebFetch
+                    ? AttributedString(content)
+                    : SyntaxHighlighter.highlight(
+                        content,
+                        theme: syntaxTheme,
+                        withLineNumbers: true,
+                        startLine: 1
+                    )
             )
         }
-        // Bash command or other: show description
-        if let desc = permission.description, !desc.isEmpty, permission.filePath == nil {
-            let isBash = permission.toolName.lowercased() == "bash"
-            return PreviewData(
+
+        if let description = input.description, !description.isEmpty, input.filePath == nil {
+            let isBash = input.toolName.lowercased() == "bash"
+            return PermissionPreviewData(
                 label: isBash ? "command" : "input",
                 metric: "",
-                attributed: isBash ? SyntaxHighlighter.highlight(desc, theme: theme.lightWells ? SyntaxHighlighter.Theme.light : SyntaxHighlighter.Theme.dark) : {
-                    var s = AttributedString(desc)
-                    s.foregroundColor = theme.wellForeground.opacity(0.85)
-                    return s
-                }()
+                attributed: isBash
+                    ? SyntaxHighlighter.highlight(description, theme: syntaxTheme)
+                    : AttributedString(description)
             )
         }
+
         return nil
     }
 
-    private func formatBytes(_ n: Int) -> String {
-        if n >= 1024 { return String(format: "%.1fkB", Double(n) / 1024.0) }
-        return "\(n)B"
+    private static func formatBytes(_ bytes: Int) -> String {
+        if bytes >= 1_024 {
+            return String(format: "%.1fkB", Double(bytes) / 1_024.0)
+        }
+        return "\(bytes)B"
     }
 }
 
