@@ -105,9 +105,9 @@ struct WebSlingerSpider: View {
     /// Points per logical pixel-art unit.
     var unit: CGFloat = 1.5
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var animPhase: Int = 0
     @State private var descended = false
-    private let animTimer = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
 
     // Sprite geometry, in logical units.
     private static let spriteW = 24
@@ -188,7 +188,19 @@ struct WebSlingerSpider: View {
         }
     }
 
+    @ViewBuilder
     var body: some View {
+        if animate && !reduceMotion {
+            spider
+                .onReceive(mascotAnimationClock) { _ in
+                    animPhase = (animPhase + 1) % 4
+                }
+        } else {
+            spider
+        }
+    }
+
+    private var spider: some View {
         Canvas { ctx, _ in draw(ctx) }
             .frame(width: CGFloat(Self.spriteW) * unit,
                    height: CGFloat(Self.spriteH) * unit)
@@ -203,10 +215,11 @@ struct WebSlingerSpider: View {
             // appearing at rest rather than vanishing.
             .offset(y: descended ? 0 : -CGFloat(Self.spriteH) * unit)
             .onAppear {
-                withAnimation(.easeOut(duration: 0.45)) { descended = true }
-            }
-            .onReceive(animTimer) { _ in
-                if animate { animPhase = (animPhase + 1) % 4 }
+                if reduceMotion {
+                    descended = true
+                } else {
+                    withAnimation(.easeOut(duration: 0.45)) { descended = true }
+                }
             }
     }
 

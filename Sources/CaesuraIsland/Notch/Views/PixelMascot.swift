@@ -1,6 +1,10 @@
 import SwiftUI
 import Combine
 
+/// One shared animation source for every visible mascot. Idle mascots do not
+/// subscribe, so a quiet notch has no mascot timer or main-run-loop wakeups.
+let mascotAnimationClock = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
+
 /// Pixel-art mascot view. Each supported provider has its own silhouette.
 struct PixelMascot: View {
     var size: CGFloat = 16
@@ -10,8 +14,8 @@ struct PixelMascot: View {
     /// Pulls the Web-Slinger mask over the Codex mascot.
     var masked: Bool = false
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var animPhase: Int = 0
-    private let animTimer = Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()
 
     enum MascotShape {
         case box         // Codex — chunky cube with head bump + 1 eye + 2 stubby feet
@@ -45,7 +49,19 @@ struct PixelMascot: View {
         var eyes: Color { .black }
     }
 
+    @ViewBuilder
     var body: some View {
+        if animate && !reduceMotion {
+            mascot
+                .onReceive(mascotAnimationClock) { _ in
+                    animPhase = (animPhase + 1) % 4
+                }
+        } else {
+            mascot
+        }
+    }
+
+    private var mascot: some View {
         Canvas { context, canvasSize in
             switch shape {
             case .box:
@@ -57,9 +73,6 @@ struct PixelMascot: View {
             }
         }
         .frame(width: aspectAdjustedWidth, height: size)
-        .onReceive(animTimer) { _ in
-            if animate { animPhase = (animPhase + 1) % 4 }
-        }
     }
 
     private var aspectAdjustedWidth: CGFloat {
