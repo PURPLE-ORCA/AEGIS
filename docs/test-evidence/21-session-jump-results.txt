@@ -1,0 +1,34 @@
+CAESURA-ISLAND desktop session-card jump QA
+Date: 2026-08-10
+
+Build verification
+- swift build: PASS
+- ./scripts/build-app.sh 0.1.0: PASS
+- generated Info.plist lint: PASS
+- ad-hoc codesign verification: PASS
+
+Card interaction
+- Computer Use exposed each card as a native button with an "Open <provider> session" label.
+- Visual evidence: docs/test-evidence/20-clickable-session-cards.jpeg
+
+Codex Desktop
+- PASS: pressing different CAESURA cards opened their exact Codex thread IDs.
+- App log evidence:
+  [18:56:30] TerminalJumper: opening Codex Desktop thread=019feca8
+  [18:56:32] TerminalJumper: opening Codex Desktop thread=019fec3f
+  [18:56:34] TerminalJumper: opening Codex Desktop thread=019fecb4
+  [19:11:39] TerminalJumper: opening Codex Desktop thread=019fec3f (final build)
+- The installed Codex app contract supports codex://threads/<thread-id>.
+- Computer Use blocks inspection of com.openai.codex itself for safety, so the
+  destination window could not be screenshot from automation.
+
+Hermes Desktop
+- PASS: pressing the Hermes card activated Hermes and targeted session 20260810.
+- PASS: the card was generated from a real Hermes Desktop prompt and completion.
+- PARTIAL: exact tab selection reached macOS Accessibility enforcement:
+  [19:06:03] TerminalJumper: focusing Hermes Desktop session=20260810
+  [19:06:08] TerminalJumper AppleScript: CAESURA-ISLAND is not allowed assistive access.
+- The final build now includes its Apple Events usage description and requests
+  Accessibility access on the first Hermes exact-session jump. Until the owner
+  grants that permission, CAESURA still activates Hermes but cannot select its
+  exact native tab.

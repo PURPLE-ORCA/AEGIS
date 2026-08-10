@@ -66,6 +66,8 @@ The bridge normalizes provider events into the app's canonical event set. The ap
 
 Desktop monitoring is read-only. CAESURA-ISLAND shows prompts, working/tool state, and final responses, while permission decisions remain inside Codex Desktop or Hermes Desktop. CLI permission requests continue to use the bridge and can be answered from the notch.
 
+Session cards are clickable. Codex Desktop cards open the exact task through Codex's thread deep link. Hermes Desktop cards activate Hermes and select the matching session tab; macOS requests Accessibility access the first time this exact-tab feature is used. If that permission is not granted, the card still brings Hermes to the foreground.
+
 Runtime state is stored under `~/.caesura-island/`:
 
 ```text

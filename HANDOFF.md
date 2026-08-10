@@ -27,6 +27,7 @@ Final verification passed for the debug build, release build, bundle assembly, `
 - Command-comma now opens the real Settings window instead of the empty SwiftUI settings scene.
 - Codex Desktop is monitored through appended rollout JSONL events in `~/.codex/sessions`; the previous redundant `codex app-server` subprocess was removed.
 - Hermes Desktop is monitored through new desktop-only message rows in `~/.hermes/state.db` using SQLite WAL-safe reads.
+- Session cards are native buttons. Codex Desktop cards open the exact task, while Hermes cards focus the matching native tab after macOS Accessibility approval. Cards remain available long enough after an intentional click to make the destination action reliable.
 - Follow-up GUI evidence: [`docs/test-evidence/17-followup-results.txt`](docs/test-evidence/17-followup-results.txt).
 
 ## Scope completed
@@ -55,6 +56,7 @@ Final verification passed for the debug build, release build, bundle assembly, `
 | 3. OpenCode live working → finished | Pass | [`docs/test-evidence/06-opencode-working.png`](docs/test-evidence/06-opencode-working.png), [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt) |
 | 3. Codex CLI live working → finished | Partial / live UI untested | The real command completed, but installed Codex CLI 0.135.0 did not emit lifecycle hooks. Direct launcher → bridge → socket delivery passed. See [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt). |
 | 3. Codex Desktop live prompt/tool state | Pass | [`docs/test-evidence/codex-desktop-working.png`](docs/test-evidence/codex-desktop-working.png), [`docs/test-evidence/desktop-sessions-expanded.png`](docs/test-evidence/desktop-sessions-expanded.png), [`docs/test-evidence/19-desktop-session-results.txt`](docs/test-evidence/19-desktop-session-results.txt) |
+| Desktop session-card jump | Codex pass; Hermes partial pending owner permission | Codex cards opened exact thread IDs. Hermes activated and reached the exact-tab Accessibility boundary; its first click now requests the required permission. [`docs/test-evidence/20-clickable-session-cards.jpeg`](docs/test-evidence/20-clickable-session-cards.jpeg), [`docs/test-evidence/21-session-jump-results.txt`](docs/test-evidence/21-session-jump-results.txt) |
 | 3. AntiGravity live working → finished | Partial / live UI untested | The real `agy --print` command completed, but the headless client did not emit its configured hooks. See [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt). |
 | 4. Permission Allow and Deny | Pass | [`docs/test-evidence/08-opencode-permission.png`](docs/test-evidence/08-opencode-permission.png), [`docs/test-evidence/09-opencode-deny.png`](docs/test-evidence/09-opencode-deny.png), [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt) |
 | 5. Terminal jump | Untested | Computer Use refused access to Ghostty for safety reasons, so the destination tab could not be driven or observed. |
@@ -63,6 +65,8 @@ Final verification passed for the debug build, release build, bundle assembly, `
 | 7. Session recovery after relaunch | Unsupported / untested | The preserved SessionStore is in-memory and has no disk serialization, so cross-process session recovery cannot be claimed. |
 
 No crash, hang, or focus steal occurred during the completed GUI tests.
+
+The built app includes an Apple Events usage description for exact Hermes navigation. On the first Hermes card click, macOS asks the owner to grant CAESURA-ISLAND Accessibility access. Without it, Hermes is still focused but its exact session tab cannot be selected.
 
 Codex and Hermes desktop monitoring is read-only. It covers prompt, thinking, tool, final-response, model, title, and workspace state. Provider-owned desktop permission dialogs remain in their respective desktop apps; notch Allow/Deny continues to apply to interactive CLI hook requests.
 
