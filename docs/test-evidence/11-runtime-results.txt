@@ -1,0 +1,51 @@
+CAESURA-ISLAND runtime test log
+Date: 2026-08-10 (Africa/Casablanca)
+
+PASS — Hermes live status
+- Command: hermes --accept-hooks -z "Reply with exactly hi."
+- App log: SessionStart and UserPromptSubmit at 17:00:35; Stop at 17:00:56.
+- CLI response: hi.
+- GUI evidence: 04-hermes-working.png
+
+PASS — OpenCode live status
+- Command: opencode run "Reply with exactly hi."
+- App log: SessionStart at 17:01:19, UserPromptSubmit at 17:01:22, Stop at 17:01:51.
+- CLI response: hi.
+- GUI evidence: 06-opencode-working.png
+
+PASS — OpenCode two-way permission: allow
+- Command used an invocation-only permission override; the owner's config was not changed.
+- App log: PermissionRequest at 17:07:33; Allow Once clicked at 17:08:27; PostToolUse followed; Stop at 17:08:33.
+- GUI evidence: 08-opencode-permission.png
+
+PASS — OpenCode two-way permission: deny
+- Command used the same invocation-only permission override.
+- App log: PermissionRequest at 17:09:29; Deny clicked at 17:09:44; the tool was rejected; Stop followed at 17:09:44.
+- GUI evidence: 09-opencode-deny.png
+
+PARTIAL — Codex live status
+- A real `codex exec` command completed and returned `hi` using model gpt-5.5.
+- The installed Codex CLI 0.135.0 did not emit configured lifecycle hooks, even with hooks enabled and hook trust bypassed.
+- Direct launcher invocation reached the bridge, socket, and session store successfully.
+- No live-state screenshot is claimed.
+
+PARTIAL — AntiGravity live status
+- Command: agy --print "Reply with exactly hi."
+- CLI response: hi
+- The installed headless command did not emit the configured hooks. The named hook group and launcher are installed at the required paths.
+- No live-state screenshot is claimed.
+
+PASS — quit and relaunch
+- The app quit through the GUI, removed its PID file, and relaunched without a crash, hang, automatic onboarding window, or focus-stealing dialog.
+- GUI evidence: 10-clean-relaunch.png
+
+UNTESTED — terminal jump
+- Computer Use refused access to Ghostty for safety reasons, so the destination terminal tab could not be driven or observed.
+
+PARTIAL — sound and notification
+- Completion events reached the preserved SoundEngine during Hermes and OpenCode runs without error.
+- Computer Use cannot verify audible output.
+- This upstream engine does not implement macOS user notifications; its completion notification is the notch card.
+
+UNSUPPORTED — session recovery across app relaunch
+- SessionStore is in-memory and does not serialize sessions to disk. The app itself relaunches cleanly, but completed/active session recovery cannot be claimed.

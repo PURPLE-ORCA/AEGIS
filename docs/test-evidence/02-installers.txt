@@ -1,0 +1,34 @@
+CAESURA-ISLAND first-launch installer verification
+Date: 2026-08-10 (Africa/Casablanca)
+
+Backups created before first launch:
+- ~/.codex/config.toml.bak-caesura
+  SHA-256: 4a70e533a8e3a073e47c7208d6225a26577df29973ef905f246e687468225187
+- ~/.hermes/config.yaml.bak-caesura
+  SHA-256: 59fc0313e98663e2f4ef5de27936a2bc01c5634085feafd3da04a40069a7ea1f
+- ~/.config/opencode/opencode.json.bak-caesura
+  SHA-256: 6b9779614a6921381ad60064da5985ba4656995c33625e896c5259bb359c5458
+
+The following files did not exist before launch, so there was nothing to copy:
+- ~/.codex/hooks.json
+- ~/.gemini/config/hooks.json
+- ~/.config/opencode/opencode.jsonc
+
+Post-launch managed identity checks:
+- ~/.codex/hooks.json: 20 case-insensitive `caesura` occurrences
+- ~/.codex/config.toml: 1 case-insensitive `caesura` occurrence
+- ~/.hermes/config.yaml: 13 case-insensitive `caesura` occurrences
+- ~/.gemini/config/hooks.json: 9 case-insensitive `caesura` occurrences
+- ~/.config/opencode/opencode.json: 1 case-insensitive `caesura` occurrence
+
+Installed launchers under ~/.caesura-island/bin:
+- caesura-island-antigravity-bridge
+- caesura-island-codex-bridge
+- caesura-island-hermes-bridge
+- caesura-island-opencode-bridge
+
+Preservation checks:
+- Codex: every original config.toml line remains in order; the managed hooks feature line was appended.
+- Hermes: every original config.yaml line remains in order; the managed hooks mapping was merged.
+- OpenCode: foreign JSON data is structurally identical after removing the one added CAESURA-ISLAND plugin reference.
+- Provider installers are idempotent and produced one launcher per supported provider.
