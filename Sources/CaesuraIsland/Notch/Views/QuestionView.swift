@@ -101,6 +101,7 @@ struct QuestionView: View {
                 // discard the user's answer — issue #25) and relabel the defer
                 // button to make the intent clear.
                 if session.source == "codex" || session.source == "hermes" {
+                    let openInk = theme.buttonInk(.cyan)
                     Button(action: onDeferToTerminal) {
                         HStack(spacing: 7) {
                             Image(systemName: "arrow.up.right.square.fill")
@@ -108,13 +109,15 @@ struct QuestionView: View {
                             Text("Open \(session.provider.displayName) to answer")
                                 .font(theme.font(size: 12, weight: .bold))
                         }
-                        .foregroundColor(.black)
+                        .foregroundColor(openInk.text)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .notchButton(theme, fill: Color.cyan)
+                        .notchButton(theme, fill: openInk.fill, stroke: openInk.stroke)
                     }
                     .buttonStyle(.plain)
                 } else {
+                    let terminalInk = theme.buttonInk(.white.opacity(0.8))
+                    let submitInk = theme.buttonInk(.cyan)
                     HStack(spacing: 10) {
                         Button(action: onDeferToTerminal) {
                             HStack(spacing: 7) {
@@ -123,10 +126,10 @@ struct QuestionView: View {
                                 Text("Answer in terminal")
                                     .font(theme.font(size: 11, weight: .semibold))
                             }
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(terminalInk.text)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
-                            .notchButton(theme, fill: .white.opacity(0.06), stroke: .white.opacity(0.18))
+                            .notchButton(theme, fill: terminalInk.fill, stroke: terminalInk.stroke)
                         }
                         .buttonStyle(.plain)
 
@@ -137,10 +140,12 @@ struct QuestionView: View {
                                 Text("Submit Answer")
                                     .font(theme.font(size: 12, weight: .bold))
                             }
-                            .foregroundColor(hasAnyAnswer ? .black : .white.opacity(0.4))
+                            .foregroundColor(hasAnyAnswer ? submitInk.text : .white.opacity(0.4))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .notchButton(theme, fill: hasAnyAnswer ? Color.cyan : Color.white.opacity(0.06))
+                            .notchButton(theme,
+                                         fill: hasAnyAnswer ? submitInk.fill : theme.boxFill,
+                                         stroke: hasAnyAnswer ? submitInk.stroke : theme.boxStroke)
                         }
                         .buttonStyle(.plain)
                     }

@@ -166,6 +166,7 @@ struct FinishedView: View {
             Spacer(minLength: 10)
 
             // Dismiss button (full width, green)
+            let dismissInk = theme.buttonInk(.green)
             Button(action: onDismiss) {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark")
@@ -173,10 +174,10 @@ struct FinishedView: View {
                     Text("Dismiss")
                         .font(theme.font(size: 11, weight: .semibold))
                 }
-                .foregroundColor(.green.opacity(0.95))
+                .foregroundColor(dismissInk.text)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 9)
-                .notchButton(theme, fill: .green.opacity(0.1), stroke: .green.opacity(0.35))
+                .notchButton(theme, fill: dismissInk.fill, stroke: dismissInk.stroke)
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())

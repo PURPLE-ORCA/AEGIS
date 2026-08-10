@@ -203,7 +203,8 @@ struct NotchTheme {
     /// Pills/badges sitting on a (possibly light) card. On light-card themes they
     /// become dark chips so their coloured text stays legible.
     func chipFill(_ base: Color) -> Color {
-        lightCards ? Color.black.opacity(0.82) : base
+        if id == .caesura { return boxFill }
+        return lightCards ? Color.black.opacity(0.82) : base
     }
 
     /// Per-theme treatment for an action button given its semantic accent colour.
@@ -212,6 +213,8 @@ struct NotchTheme {
     /// Brutalist: SOLID accent fill + black border + dark text (loud, flat).
     func buttonInk(_ accent: Color) -> (fill: Color, stroke: Color?, text: Color) {
         switch id {
+        case .caesura:
+            return (boxFill, accent.opacity(0.48), accent.opacity(0.95))
         case .brutalist:
             return (accent, .black, Color(red: 0.10, green: 0.10, blue: 0.11))
         case .pixel:
@@ -241,8 +244,8 @@ extension NotchTheme {
 
     static let caesuraTheme = NotchTheme(
         id: .caesura,
-        windowFill: .solid(Color(red: 0.025, green: 0.020, blue: 0.040)), // #06050A
-        windowStroke: Color(red: 0.545, green: 0.361, blue: 0.965).opacity(0.55),
+        windowFill: .solid(Color(red: 0.027, green: 0.020, blue: 0.047)), // #07050C
+        windowStroke: Color(red: 0.545, green: 0.361, blue: 0.965).opacity(0.72),
         windowStrokeWidth: 1,
         cardRadius: 12,
         boxRadius: 9,
@@ -250,18 +253,20 @@ extension NotchTheme {
         buttonRadius: 9,
         strokeWidth: 1,
         surfaceShadow: NotchShadow(
-            color: Color(red: 0.545, green: 0.361, blue: 0.965).opacity(0.14),
+            color: Color(red: 0.545, green: 0.361, blue: 0.965).opacity(0.18),
             radius: 9, x: 0, y: 3
         ),
-        neutralCardFill: Color(red: 0.067, green: 0.047, blue: 0.105),
-        neutralCardStroke: Color(red: 0.545, green: 0.361, blue: 0.965).opacity(0.24),
-        boxFill: Color(red: 0.043, green: 0.031, blue: 0.067),
-        boxStroke: Color(red: 0.655, green: 0.545, blue: 0.980).opacity(0.20),
+        neutralCardFill: Color(red: 0.086, green: 0.055, blue: 0.149), // #160E26
+        neutralCardStroke: Color(red: 0.545, green: 0.361, blue: 0.965).opacity(0.46),
+        boxFill: Color(red: 0.051, green: 0.035, blue: 0.090), // #0D0917
+        boxStroke: Color(red: 0.655, green: 0.545, blue: 0.980).opacity(0.28),
         cardTintFillActive: 0.10,
         cardTintFillIdle: 0.055,
         cardTintStrokeActive: 0.48,
-        cardTintStrokeIdle: 0.22,
-        fontDesign: .default
+        cardTintStrokeIdle: 0.30,
+        fontDesign: .default,
+        cardHueActive: Color(red: 0.655, green: 0.545, blue: 0.980),
+        cardHueIdle: Color(red: 0.486, green: 0.227, blue: 0.929)
     )
 
     /// Exact reproduction of the shipped v1.1.6 look. Changing nothing here is
@@ -517,6 +522,7 @@ extension View {
     func notchCard(_ theme: NotchTheme, tint: Color? = nil, active: Bool = false,
                    ink: NotchCardInk? = nil) -> some View {
         let fill: Color = ink?.fill
+            ?? (theme.id == .caesura ? theme.neutralCardFill : nil)
             ?? tint.map { $0.opacity(active ? theme.cardTintFillActive : theme.cardTintFillIdle) }
             ?? theme.neutralCardFill
         let stroke: Color = ink?.stroke
@@ -559,13 +565,16 @@ extension View {
     /// 20) — the theme's `pillCorner` policy decides what to do with it.
     func notchPill(_ theme: NotchTheme, fill: Color, stroke: Color? = nil, base: CGFloat = 5) -> some View {
         let r = theme.pillCorner.radius(base: base)
+        let resolvedFill = theme.id == .caesura ? theme.boxFill : fill
+        let resolvedStroke = theme.id == .caesura ? (stroke ?? theme.boxStroke) : stroke
         return self
             .background(
                 RoundedRectangle(cornerRadius: r, style: .continuous)
-                    .fill(fill)
+                    .fill(resolvedFill)
                     .overlay(
                         RoundedRectangle(cornerRadius: r, style: .continuous)
-                            .strokeBorder(stroke ?? .clear, lineWidth: stroke == nil ? 0 : theme.strokeWidth)
+                            .strokeBorder(resolvedStroke ?? .clear,
+                                          lineWidth: resolvedStroke == nil ? 0 : theme.strokeWidth)
                     )
             )
     }
