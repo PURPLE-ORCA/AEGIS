@@ -80,42 +80,22 @@ struct QuestionView: View {
                 .padding(.bottom, 12)
             }
 
-            Divider().background(Color.white.opacity(0.08))
+            if session.source != "codex" && session.source != "hermes" {
+                Divider().background(Color.white.opacity(0.08))
 
-            // Bottom action row
-            VStack(spacing: 8) {
-                if showWarning && !hasAnyAnswer {
-                    HStack(spacing: 4) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(.orange)
-                        Text("Pick an option or type a custom answer")
-                            .font(theme.font(size: 10))
-                            .foregroundColor(.orange)
-                    }
-                }
-
-                // For Codex and Hermes, hook-side answer substitution isn't
-                // supported — the only way to actually answer is in the agent's
-                // own terminal/app. Hide the Submit button (which would silently
-                // discard the user's answer — issue #25) and relabel the defer
-                // button to make the intent clear.
-                if session.source == "codex" || session.source == "hermes" {
-                    let openInk = theme.buttonInk(.cyan)
-                    Button(action: onDeferToTerminal) {
-                        HStack(spacing: 7) {
-                            Image(systemName: "arrow.up.right.square.fill")
-                                .font(.system(size: 12))
-                            Text("Open \(session.provider.displayName) to answer")
-                                .font(theme.font(size: 12, weight: .bold))
+                // Bottom action row for providers that support question responses.
+                VStack(spacing: 8) {
+                    if showWarning && !hasAnyAnswer {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.orange)
+                            Text("Pick an option or type a custom answer")
+                                .font(theme.font(size: 10))
+                                .foregroundColor(.orange)
                         }
-                        .foregroundColor(openInk.text)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .notchButton(theme, fill: openInk.fill, stroke: openInk.stroke)
                     }
-                    .buttonStyle(.plain)
-                } else {
+
                     let terminalInk = theme.buttonInk(.white.opacity(0.8))
                     let submitInk = theme.buttonInk(.cyan)
                     HStack(spacing: 10) {
@@ -150,9 +130,9 @@ struct QuestionView: View {
                         .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
