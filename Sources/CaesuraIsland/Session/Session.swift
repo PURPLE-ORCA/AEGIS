@@ -182,6 +182,8 @@ struct Session: Identifiable {
 
     var detectedTerminalApp: String {
         if let app = terminalApp { return app }
+        if terminalInfo == nil, source == "codex" { return "Open Codex" }
+        if terminalInfo == nil, source == "hermes" { return "Open Hermes" }
         return TerminalJumper.appName(for: terminalInfo?.appBundleId)
     }
 }

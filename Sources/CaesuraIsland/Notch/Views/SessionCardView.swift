@@ -134,8 +134,16 @@ struct SessionCardView: View {
         .padding(.vertical, 10)
         .notchCard(theme, tint: cardTint, active: isActive, ink: cardInk)
         .contentShape(Rectangle())
-        .onTapGesture {
-            TerminalJumper.jump(to: session)
+        .overlay {
+            Button {
+                TerminalJumper.jump(to: session)
+            } label: {
+                Color.clear
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open \(session.provider.displayName) session \(session.displayName)")
+            .accessibilityHint("Opens this session in its app or terminal")
         }
     }
 
@@ -214,7 +222,9 @@ struct SessionCardView: View {
 
     private var terminalPill: some View {
         HStack(spacing: 4) {
-            Image(systemName: "terminal")
+            Image(systemName: session.terminalInfo == nil && ["codex", "hermes"].contains(session.source)
+                  ? "arrow.up.forward.app"
+                  : "terminal")
                 .font(.system(size: 9))
                 .foregroundColor(.white.opacity(0.6))
             Text(session.detectedTerminalApp)

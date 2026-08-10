@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 
 /// Jumps to the terminal/IDE associated with a session.
 /// Supports tab-level jumping for iTerm2, Terminal.app, Ghostty, JetBrains, VS Code/Cursor.
@@ -38,6 +39,15 @@ enum TerminalJumper {
 
         Log.info("TerminalJumper: bundle=\(bundleId) cwd=\(cwd)")
 
+        if info == nil, session.source == "codex" {
+            jumpCodexDesktop(threadId: session.id)
+            return
+        }
+        if info == nil, session.source == "hermes" {
+            jumpHermesDesktop(session: session)
+            return
+        }
+
         // Activate the app first
         activateApp(bundleId: bundleId)
 
@@ -59,6 +69,64 @@ enum TerminalJumper {
             jumpVSCode(bundleId: bundleId, cwd: cwd)
         }
         // For anything else, activateApp already brought it to front
+    }
+
+    // MARK: - Desktop agent apps
+
+    private static func jumpCodexDesktop(threadId: String) {
+        guard threadId.range(
+            of: #"^[0-9a-fA-F-]{36}$"#,
+            options: .regularExpression
+        ) != nil,
+        let url = URL(string: "codex://threads/\(threadId)") else {
+            activateApp(bundleId: "com.openai.codex")
+            return
+        }
+        Log.info("TerminalJumper: opening Codex Desktop thread=\(threadId.prefix(8))")
+        NSWorkspace.shared.open(url)
+    }
+
+    private static func jumpHermesDesktop(session: Session) {
+        activateApp(bundleId: "com.nousresearch.hermes")
+
+        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        guard AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary) else {
+            Log.info("TerminalJumper: Hermes exact focus requires Accessibility access")
+            return
+        }
+
+        let title = [session.sessionTitle, session.lastUserMessage, session.firstPrompt]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        guard let title else { return }
+
+        let escapedTitle = escapeAppleScriptString(String(title.prefix(160)))
+        Log.info("TerminalJumper: focusing Hermes Desktop session=\(session.id.prefix(8))")
+        runAppleScript("""
+        tell application "System Events"
+            tell process "Hermes"
+                set frontmost to true
+                repeat with appWindow in windows
+                    try
+                        set allElements to entire contents of appWindow
+                        repeat with candidate in allElements
+                            try
+                                set candidateRole to role of candidate as text
+                                set candidateName to name of candidate as text
+                                if candidateName is not "" and (candidateRole is "AXRadioButton" or candidateRole is "AXTab") then
+                                    if candidateName contains "\(escapedTitle)" or "\(escapedTitle)" contains candidateName then
+                                        perform action "AXPress" of candidate
+                                        perform action "AXRaise" of appWindow
+                                        return
+                                    end if
+                                end if
+                            end try
+                        end repeat
+                    end try
+                end repeat
+            end tell
+        end tell
+        """)
     }
 
     // MARK: - App Activation

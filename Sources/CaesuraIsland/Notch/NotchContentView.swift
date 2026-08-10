@@ -83,7 +83,7 @@ struct NotchContentView: View {
     }
 
     private func activateCollapsed() {
-        if !showNextPending() { viewModel.expand() }
+        if !showNextPending() { viewModel.expand(holdSeconds: 2.0) }
     }
 
     /// Surface the next queued decision (oldest-first): a permission routes to
