@@ -125,7 +125,7 @@ final class SettingsStore: ObservableObject {
             "soundToolUse": false,
             "soundError": true,
             "soundPermission": true,
-            "notchThemeID": NotchThemeID.default.rawValue,
+            "notchThemeID": NotchThemeID.caesura.rawValue,
             "hasSeenThemeOnboarding": false,
         ])
 
@@ -163,7 +163,13 @@ final class SettingsStore: ObservableObject {
             defaults.set(2, forKey: "builtInSoundVersion")
         }
         self.soundAssignments = assignments
-        self.notchThemeID = NotchThemeID(rawValue: defaults.string(forKey: "notchThemeID") ?? "") ?? .default
+        var selectedTheme = NotchThemeID(rawValue: defaults.string(forKey: "notchThemeID") ?? "") ?? .caesura
+        if defaults.integer(forKey: "appearanceVersion") < 2 {
+            selectedTheme = .caesura
+            defaults.set(NotchThemeID.caesura.rawValue, forKey: "notchThemeID")
+            defaults.set(2, forKey: "appearanceVersion")
+        }
+        self.notchThemeID = selectedTheme
         self.hasSeenThemeOnboarding = defaults.bool(forKey: "hasSeenThemeOnboarding")
         self.lastWhatsNewVersion = defaults.string(forKey: "lastWhatsNewVersion") ?? ""
 

@@ -11,6 +11,7 @@ import SwiftUI
 /// orange waiting / red error), tool colors, action-button red/green/purple,
 /// and rate-limit thresholds all stay constant so red always means deny.
 enum NotchThemeID: String, CaseIterable, Identifiable {
+    case caesura
     case `default`
     case glass
     case pixel
@@ -22,6 +23,7 @@ enum NotchThemeID: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
+        case .caesura:    return "Caesura"
         case .default:    return "Default"
         case .glass:      return "Liquid Glass"
         case .pixel:      return "Retro Pixel"
@@ -33,6 +35,7 @@ enum NotchThemeID: String, CaseIterable, Identifiable {
 
     var blurb: String {
         switch self {
+        case .caesura:    return "Near-black surfaces, restrained violet edges, and clean macOS typography."
         case .default:    return "The original — pure black, monospaced, soft rounded cards."
         case .glass:      return "Frosted translucency, pill controls, native macOS feel."
         case .pixel:      return "8-bit chunky borders, square corners, hard offset shadows."
@@ -227,6 +230,7 @@ struct NotchTheme {
 
 extension NotchTheme {
     static let all: [NotchThemeID: NotchTheme] = [
+        .caesura:    .caesuraTheme,
         .default:    .defaultTheme,
         .glass:      .glassTheme,
         .pixel:      .pixelTheme,
@@ -234,6 +238,31 @@ extension NotchTheme {
         .brutalist:  .brutalistTheme,
         .webSlinger: .webSlingerTheme,
     ]
+
+    static let caesuraTheme = NotchTheme(
+        id: .caesura,
+        windowFill: .solid(Color(red: 0.025, green: 0.020, blue: 0.040)), // #06050A
+        windowStroke: Color(red: 0.545, green: 0.361, blue: 0.965).opacity(0.55),
+        windowStrokeWidth: 1,
+        cardRadius: 12,
+        boxRadius: 9,
+        pillCorner: .cap(8),
+        buttonRadius: 9,
+        strokeWidth: 1,
+        surfaceShadow: NotchShadow(
+            color: Color(red: 0.545, green: 0.361, blue: 0.965).opacity(0.14),
+            radius: 9, x: 0, y: 3
+        ),
+        neutralCardFill: Color(red: 0.067, green: 0.047, blue: 0.105),
+        neutralCardStroke: Color(red: 0.545, green: 0.361, blue: 0.965).opacity(0.24),
+        boxFill: Color(red: 0.043, green: 0.031, blue: 0.067),
+        boxStroke: Color(red: 0.655, green: 0.545, blue: 0.980).opacity(0.20),
+        cardTintFillActive: 0.10,
+        cardTintFillIdle: 0.055,
+        cardTintStrokeActive: 0.48,
+        cardTintStrokeIdle: 0.22,
+        fontDesign: .default
+    )
 
     /// Exact reproduction of the shipped v1.1.6 look. Changing nothing here is
     /// load-bearing: existing users must see no difference on "Default".
@@ -412,7 +441,7 @@ extension NotchTheme {
 // MARK: - Environment plumbing
 
 private struct NotchThemeKey: EnvironmentKey {
-    static let defaultValue: NotchTheme = .defaultTheme
+    static let defaultValue: NotchTheme = .caesuraTheme
 }
 
 extension EnvironmentValues {
