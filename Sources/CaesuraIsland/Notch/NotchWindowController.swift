@@ -99,7 +99,10 @@ final class NotchWindowController: NSWindowController {
 
             switch event {
             case .permissionRequested(let sessionId):
-                guard !isAlreadyDeciding else { return }
+                guard DecisionPresentationPolicy.shouldPresentPermission(
+                    state: viewModel.state,
+                    autoExpandEnabled: settingsStore.autoExpandOnPermission
+                ), !isAlreadyDeciding else { return }
                 let height = computePermissionHeight(sessionId: sessionId)
                 viewModel.showPermission(sessionId: sessionId, contentHeight: height)
             case .questionAsked(let sessionId):
@@ -250,5 +253,21 @@ final class NotchWindowController: NSWindowController {
         let hasUser = session.lastUserMessage != nil
         let replyLines = session.lastAssistantMessage.map { estimateVisualLines($0) } ?? 0
         return NotchViewModel.computeFinishedHeight(hasUser: hasUser, replyLines: replyLines)
+    }
+}
+
+enum DecisionPresentationPolicy {
+    static func shouldPresentPermission(
+        state: NotchState,
+        autoExpandEnabled: Bool
+    ) -> Bool {
+        switch state {
+        case .collapsed:
+            return autoExpandEnabled
+        case .permission, .question:
+            return false
+        case .expanded, .finished:
+            return true
+        }
     }
 }
