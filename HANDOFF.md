@@ -21,7 +21,7 @@ Final verification passed for the debug build, release build, bundle assembly, `
 ## Follow-up improvements
 
 - Codex quota display now classifies windows from API duration, shows remaining quota, and refreshes every minute. Current verified output: `7d 42% left 5d3h`.
-- Notch hover uses a 350ms intent delay. Fast crossings cancel; click opens immediately. Settings includes an `Expand on hover` toggle for click-only mode.
+- Notch hover is instant on the standalone built-in display. With multiple active displays it uses a 350ms intent delay so fast crossings cancel. Click still opens immediately, and Settings includes an `Expand on hover` toggle for click-only mode.
 - Default game-style waveforms were replaced by restrained sine-partial notification tones. Session start/end and tool-use chatter default to Off.
 - New purple-black `Caesura` appearance is selected by default through a one-time preference migration.
 - Command-comma now opens the real Settings window instead of the empty SwiftUI settings scene.

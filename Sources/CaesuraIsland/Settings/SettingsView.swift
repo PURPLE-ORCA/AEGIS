@@ -277,7 +277,7 @@ struct SettingsView: View {
             Toggle(isOn: $settingsStore.expandOnHover) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Expand on hover")
-                    Text("Uses a short intent delay to ignore quick monitor crossings. Turn off for click-only.")
+                    Text("Instant on the built-in display; uses a short intent delay when multiple displays are connected. Turn off for click-only.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }

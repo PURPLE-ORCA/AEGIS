@@ -9,12 +9,14 @@ PASS — Codex quota semantics
 - Evidence: 13-caesura-quota.png
 
 PASS — stacked-display hover controls
-- Hover expansion now waits 350ms and cancels when pointer exits.
+- Standalone built-in display expands immediately with no delay or Task allocation.
+- Multiple-display mode waits 350ms and cancels when pointer exits.
 - Clicking the collapsed notch still opens immediately.
 - `Expand on hover` setting toggled off and on through the real Settings GUI.
 - Final persisted value: on.
 - Computer Use has no pointer-move primitive, so an automated fast trajectory across both physical displays was not available.
-- Evidence: 14-hover-setting.png
+- Runtime verification detected two active displays and selected delayed mode.
+- Evidence: 14-hover-setting.png, 18-adaptive-hover.png
 
 PASS — calm notification palette
 - Square, triangle, and sawtooth game sounds removed.

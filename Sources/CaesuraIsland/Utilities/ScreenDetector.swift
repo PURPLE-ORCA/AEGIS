@@ -1,6 +1,11 @@
 import AppKit
 
 struct ScreenDetector {
+    /// True whenever macOS currently exposes more than one active display.
+    static var hasSecondaryDisplay: Bool {
+        NSScreen.screens.count > 1
+    }
+
     /// Returns the screen that has a notch, or the main screen as fallback.
     static var notchScreen: NSScreen {
         // The built-in display with a notch has safeAreaInsets.top > 0

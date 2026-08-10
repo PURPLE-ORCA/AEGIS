@@ -61,10 +61,15 @@ struct NotchContentView: View {
                 viewModel.mouseEntered()
                 if settingsStore.expandOnHover, case .collapsed = viewModel.state {
                     hoverActivationTask?.cancel()
-                    hoverActivationTask = Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(350))
-                        guard !Task.isCancelled, viewModel.isHovered,
-                              case .collapsed = viewModel.state else { return }
+                    if ScreenDetector.hasSecondaryDisplay {
+                        hoverActivationTask = Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(350))
+                            guard !Task.isCancelled, viewModel.isHovered,
+                                  case .collapsed = viewModel.state else { return }
+                            activateCollapsed()
+                        }
+                    } else {
+                        // Standalone Mac: fastest path. No delay and no Task.
                         activateCollapsed()
                     }
                 }
