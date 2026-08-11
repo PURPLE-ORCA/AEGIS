@@ -1,14 +1,12 @@
 import Foundation
 
 enum Log {
-    private static let queue = DispatchQueue(
-        label: "com.caesura-island.logger",
-        qos: .utility
-    )
-    private static let writer = FileLogWriter(
-        url: FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".caesura-island/debug.log"),
-        maxBytes: 2 * 1_024 * 1_024
+    private static let sink = AsyncLogSink(
+        writer: FileLogWriter(
+            url: FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".caesura-island/debug.log"),
+            maxBytes: 2 * 1_024 * 1_024
+        )
     )
 
     static func info(_ message: String) {
@@ -20,21 +18,65 @@ enum Log {
     }
 
     static func shutdown() {
-        queue.sync {
-            writer.close()
-        }
+        sink.shutdown()
     }
 
     private static func enqueue(level: String, message: String) {
-        let timestamp = DateFormatter.localizedString(
-            from: Date(),
-            dateStyle: .none,
-            timeStyle: .medium
-        )
-        let line = "[\(timestamp)] [\(level)] \(message)\n"
-        queue.async {
-            writer.write(line)
+        sink.enqueue(date: Date(), level: level, message: message)
+    }
+}
+
+final class AsyncLogSink {
+    private let queue: DispatchQueue
+    private let queueKey = DispatchSpecificKey<Void>()
+    private let writer: FileLogWriter
+    private let makeFormatter: () -> LogLineFormatter
+    private var formatter: LogLineFormatter?
+
+    init(
+        writer: FileLogWriter,
+        makeFormatter: @escaping () -> LogLineFormatter = { LogLineFormatter() },
+        label: String = "com.caesura-island.logger"
+    ) {
+        self.writer = writer
+        self.makeFormatter = makeFormatter
+        self.queue = DispatchQueue(label: label, qos: .utility)
+        self.queue.setSpecific(key: queueKey, value: ())
+    }
+
+    func enqueue(date: Date, level: String, message: String) {
+        queue.async { [self] in
+            if formatter == nil {
+                formatter = makeFormatter()
+            }
+            guard let formatter else { return }
+            writer.write(formatter.line(date: date, level: level, message: message))
         }
+    }
+
+    func shutdown() {
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            writer.close()
+        } else {
+            queue.sync { writer.close() }
+        }
+    }
+}
+
+final class LogLineFormatter {
+    private let dateFormatter: DateFormatter
+
+    init(locale: Locale? = nil, timeZone: TimeZone? = nil) {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        if let locale { formatter.locale = locale }
+        if let timeZone { formatter.timeZone = timeZone }
+        self.dateFormatter = formatter
+    }
+
+    func line(date: Date, level: String, message: String) -> String {
+        "[\(dateFormatter.string(from: date))] [\(level)] \(message)\n"
     }
 }
 
