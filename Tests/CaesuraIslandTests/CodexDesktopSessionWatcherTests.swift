@@ -66,7 +66,7 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
         let watcher = CodexDesktopSessionWatcher(
             root: root,
             automaticallyMonitorsChanges: false,
-            reconciliationInterval: nil
+            reconciliationSchedule: nil
         )
         let started = expectation(description: "watcher started")
         let working = expectation(description: "working event")
@@ -105,7 +105,7 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
         let watcher = CodexDesktopSessionWatcher(
             root: root,
             automaticallyMonitorsChanges: false,
-            reconciliationInterval: nil
+            reconciliationSchedule: nil
         )
         let started = expectation(description: "watcher started")
         let completed = expectation(description: "two completions")
@@ -135,11 +135,102 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
         XCTAssertNil(completionMessages[1])
     }
 
+    func testPolicyUsesOneSecondOnlyWhileActive() {
+        let schedule = CodexReconciliationSchedule(
+            activeInterval: 1,
+            recentDiscoveryInterval: 10,
+            fullAuditInterval: 300
+        )
+        var policy = CodexReconciliationPolicy(schedule: schedule, startTime: 0)
+
+        XCTAssertEqual(policy.nextDelay(at: 0, hasActiveTranscripts: true), 1)
+        XCTAssertEqual(policy.nextDelay(at: 0, hasActiveTranscripts: false), 10)
+        XCTAssertEqual(policy.dueScopes(at: 9, hasActiveTranscripts: false), [])
+        XCTAssertEqual(policy.dueScopes(at: 10, hasActiveTranscripts: false), [.recentDiscovery])
+        XCTAssertEqual(policy.dueScopes(at: 299, hasActiveTranscripts: true), [.active, .recentDiscovery])
+        XCTAssertEqual(policy.dueScopes(at: 300, hasActiveTranscripts: false), [.fullAudit])
+        XCTAssertGreaterThanOrEqual(policy.nextFullAudit, 600)
+    }
+
+    func testRecentDiscoveryReturnsOnlyNewestTwoDateLeaves() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let old = try makeDateDirectory(root: root, path: "2026/07/01")
+        let secondNewest = try makeDateDirectory(root: root, path: "2026/08/09")
+        let newest = try makeDateDirectory(root: root, path: "2026/08/11")
+
+        let directories = CodexRecentDirectoryDiscovery.dateLeafDirectories(under: root, limit: 2)
+
+        XCTAssertEqual(directories.map(datePath), [datePath(newest), datePath(secondNewest)])
+        XCTAssertFalse(directories.map(datePath).contains(datePath(old)))
+    }
+
+    func testRecentReconciliationFindsNewestTwoButFullAuditRecoversOldDirectory() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let old = try makeDateDirectory(root: root, path: "2026/07/01")
+        let secondNewest = try makeDateDirectory(root: root, path: "2026/08/09")
+        let newest = try makeDateDirectory(root: root, path: "2026/08/11")
+        let watcher = CodexDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil
+        )
+        let started = expectation(description: "watcher started")
+        let recentMessages = expectation(description: "two recent sessions discovered")
+        recentMessages.expectedFulfillmentCount = 2
+        let oldMessage = expectation(description: "old session recovered by full audit")
+        var received = Set<String>()
+        watcher.onMessage = { message in
+            received.insert(message.sessionId)
+            if message.sessionId == "old" {
+                oldMessage.fulfill()
+            } else {
+                recentMessages.fulfill()
+            }
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started], timeout: 3)
+        defer { watcher.stop() }
+
+        try writeNewSession(id: "old", in: old)
+        try writeNewSession(id: "second", in: secondNewest)
+        try writeNewSession(id: "newest", in: newest)
+
+        watcher.reconcileNow(scope: .recentDiscovery)
+        wait(for: [recentMessages], timeout: 3)
+        XCTAssertEqual(received, ["second", "newest"])
+
+        watcher.reconcileNow(scope: .fullAudit)
+        wait(for: [oldMessage], timeout: 3)
+        XCTAssertEqual(received, ["old", "second", "newest"])
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("caesura-codex-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func makeDateDirectory(root: URL, path: String) throws -> URL {
+        let directory = root.appendingPathComponent(path, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private func datePath(_ url: URL) -> String {
+        let day = url.lastPathComponent
+        let month = url.deletingLastPathComponent().lastPathComponent
+        let year = url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
+        return "\(year)/\(month)/\(day)"
+    }
+
+    private func writeNewSession(id: String, in directory: URL) throws {
+        try writeLines([
+            #"{"type":"session_meta","payload":{"id":"\#(id)","cwd":"/tmp/project"}}"#,
+            #"{"type":"event_msg","payload":{"type":"user_message","message":"hello"}}"#,
+        ], to: directory.appendingPathComponent("rollout-\(id).jsonl"))
     }
 
     private func writeLines(_ lines: [String], to url: URL) throws {

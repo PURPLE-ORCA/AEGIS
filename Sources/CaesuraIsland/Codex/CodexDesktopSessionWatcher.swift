@@ -1,5 +1,104 @@
 import Foundation
 
+enum CodexReconciliationScope: Hashable {
+    case active
+    case recentDiscovery
+    case fullAudit
+}
+
+struct CodexReconciliationSchedule: Equatable {
+    let activeInterval: TimeInterval
+    let recentDiscoveryInterval: TimeInterval
+    let fullAuditInterval: TimeInterval
+
+    static let standard = CodexReconciliationSchedule(
+        activeInterval: 1,
+        recentDiscoveryInterval: 10,
+        fullAuditInterval: 300
+    )
+}
+
+struct CodexReconciliationPolicy {
+    let schedule: CodexReconciliationSchedule
+    private(set) var nextRecentDiscovery: TimeInterval
+    private(set) var nextFullAudit: TimeInterval
+
+    init(schedule: CodexReconciliationSchedule, startTime: TimeInterval) {
+        self.schedule = schedule
+        self.nextRecentDiscovery = startTime + schedule.recentDiscoveryInterval
+        self.nextFullAudit = startTime + schedule.fullAuditInterval
+    }
+
+    mutating func dueScopes(at time: TimeInterval, hasActiveTranscripts: Bool) -> Set<CodexReconciliationScope> {
+        var scopes: Set<CodexReconciliationScope> = hasActiveTranscripts ? [.active] : []
+
+        if time >= nextFullAudit {
+            scopes.insert(.fullAudit)
+            nextFullAudit = time + schedule.fullAuditInterval
+            nextRecentDiscovery = time + schedule.recentDiscoveryInterval
+        } else if time >= nextRecentDiscovery {
+            scopes.insert(.recentDiscovery)
+            nextRecentDiscovery = time + schedule.recentDiscoveryInterval
+        }
+
+        return scopes
+    }
+
+    mutating func recordFullAudit(at time: TimeInterval) {
+        nextFullAudit = time + schedule.fullAuditInterval
+        nextRecentDiscovery = time + schedule.recentDiscoveryInterval
+    }
+
+    func nextDelay(at time: TimeInterval, hasActiveTranscripts: Bool) -> TimeInterval {
+        if hasActiveTranscripts { return schedule.activeInterval }
+        return max(0.1, min(nextRecentDiscovery, nextFullAudit) - time)
+    }
+}
+
+struct CodexRecentDirectoryDiscovery {
+    static func dateLeafDirectories(
+        under root: URL,
+        limit: Int,
+        fileManager: FileManager = .default
+    ) -> [URL] {
+        guard limit > 0 else { return [] }
+
+        var leaves: [(key: String, url: URL)] = []
+        for year in numericDirectories(in: root, digits: 4, fileManager: fileManager) {
+            for month in numericDirectories(in: year, digits: 2, fileManager: fileManager) {
+                for day in numericDirectories(in: month, digits: 2, fileManager: fileManager) {
+                    let key = "\(year.lastPathComponent)/\(month.lastPathComponent)/\(day.lastPathComponent)"
+                    leaves.append((key, day))
+                }
+            }
+        }
+
+        return leaves
+            .sorted { $0.key > $1.key }
+            .prefix(limit)
+            .map(\.url)
+    }
+
+    private static func numericDirectories(
+        in parent: URL,
+        digits: Int,
+        fileManager: FileManager
+    ) -> [URL] {
+        let keys: Set<URLResourceKey> = [.isDirectoryKey]
+        guard let children = try? fileManager.contentsOfDirectory(
+            at: parent,
+            includingPropertiesForKeys: Array(keys),
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        return children.filter { child in
+            let name = child.lastPathComponent
+            guard name.count == digits, name.allSatisfy(\.isNumber) else { return false }
+            return (try? child.resourceValues(forKeys: keys).isDirectory) == true
+        }
+    }
+}
+
 final class CodexDesktopSessionWatcher {
     var onMessage: ((BridgeMessage) -> Void)?
 
@@ -14,11 +113,11 @@ final class CodexDesktopSessionWatcher {
 
     private let root: URL
     private let automaticallyMonitorsChanges: Bool
-    private let reconciliationInterval: TimeInterval?
+    private let reconciliationSchedule: CodexReconciliationSchedule?
     private let queue = DispatchQueue(label: "dev.caesura.island.codex-desktop", qos: .utility)
     private var monitor: FileEventMonitor?
     private var reconciliationTimer: DispatchSourceTimer?
-    private var reconciliationTick = 0
+    private var reconciliationPolicy: CodexReconciliationPolicy?
     private var offsets: [String: UInt64] = [:]
     private var buffers: [String: Data] = [:]
     private var states: [String: SessionState] = [:]
@@ -26,17 +125,23 @@ final class CodexDesktopSessionWatcher {
     init(
         root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions"),
         automaticallyMonitorsChanges: Bool = true,
-        reconciliationInterval: TimeInterval? = 1
+        reconciliationSchedule: CodexReconciliationSchedule? = .standard
     ) {
         self.root = root.resolvingSymlinksInPath().standardizedFileURL
         self.automaticallyMonitorsChanges = automaticallyMonitorsChanges
-        self.reconciliationInterval = reconciliationInterval
+        self.reconciliationSchedule = reconciliationSchedule
     }
 
     func start(completion: (() -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self else { return }
             self.seedExistingFiles()
+            if let reconciliationSchedule = self.reconciliationSchedule {
+                self.reconciliationPolicy = CodexReconciliationPolicy(
+                    schedule: reconciliationSchedule,
+                    startTime: ProcessInfo.processInfo.systemUptime
+                )
+            }
             if self.automaticallyMonitorsChanges {
                 let monitor = FileEventMonitor(
                     root: self.root,
@@ -49,7 +154,7 @@ final class CodexDesktopSessionWatcher {
                 self.monitor = monitor
                 monitor.start()
             }
-            self.startReconciliationTimer()
+            self.scheduleNextReconciliation()
             Log.info("Codex Desktop watcher started at \(self.root.path)")
             completion?()
         }
@@ -59,7 +164,7 @@ final class CodexDesktopSessionWatcher {
         queue.sync {
             reconciliationTimer?.cancel()
             reconciliationTimer = nil
-            reconciliationTick = 0
+            reconciliationPolicy = nil
             monitor?.stop()
             monitor = nil
         }
@@ -69,8 +174,18 @@ final class CodexDesktopSessionWatcher {
     /// Useful for deterministic tests and for callers that need an immediate
     /// catch-up after an external lifecycle transition.
     func reconcileNow() {
+        reconcileNow(scope: .fullAudit)
+    }
+
+    func reconcileNow(scope: CodexReconciliationScope) {
         queue.async { [weak self] in
-            self?.reconcileTranscripts(includeAll: true)
+            guard let self else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            if scope == .fullAudit {
+                self.reconciliationPolicy?.recordFullAudit(at: now)
+            }
+            self.reconcileTranscripts(scopes: [scope])
+            self.scheduleNextReconciliation()
         }
     }
 
@@ -98,38 +213,61 @@ final class CodexDesktopSessionWatcher {
             }
         }
         for path in files { readAppendedLines(at: URL(fileURLWithPath: path)) }
+        scheduleNextReconciliation()
     }
 
-    private func startReconciliationTimer() {
-        guard let reconciliationInterval, reconciliationInterval > 0 else { return }
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(
-            deadline: .now() + reconciliationInterval,
-            repeating: reconciliationInterval,
+    private func scheduleNextReconciliation() {
+        guard let policy = reconciliationPolicy else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let delay = policy.nextDelay(at: now, hasActiveTranscripts: hasActiveTranscripts)
+
+        if reconciliationTimer == nil {
+            let timer = DispatchSource.makeTimerSource(queue: queue)
+            timer.setEventHandler { [weak self] in
+                self?.runScheduledReconciliation()
+            }
+            reconciliationTimer = timer
+            timer.resume()
+        }
+
+        reconciliationTimer?.schedule(
+            deadline: .now() + delay,
             leeway: .milliseconds(150)
         )
-        timer.setEventHandler { [weak self] in
-            guard let self else { return }
-            self.reconciliationTick += 1
-            // Active transcripts get a one-second safety check so a missed
-            // final append cannot leave a card spinning. Every tenth tick also
-            // stats the full tree to recover a missed turn-start/new-file event.
-            self.reconcileTranscripts(includeAll: self.reconciliationTick % 10 == 0)
-        }
-        reconciliationTimer = timer
-        timer.resume()
     }
 
-    private func reconcileTranscripts(includeAll: Bool) {
-        var paths: Set<String>
-        if includeAll {
-            paths = Set(offsets.keys)
+    private func runScheduledReconciliation() {
+        guard var policy = reconciliationPolicy else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let scopes = policy.dueScopes(at: now, hasActiveTranscripts: hasActiveTranscripts)
+        reconciliationPolicy = policy
+        reconcileTranscripts(scopes: scopes)
+        scheduleNextReconciliation()
+    }
+
+    private var hasActiveTranscripts: Bool {
+        states.values.contains { $0.active || !$0.tools.isEmpty }
+    }
+
+    private func reconcileTranscripts(scopes: Set<CodexReconciliationScope>) {
+        var paths = Set<String>()
+
+        if scopes.contains(.fullAudit) {
+            paths.formUnion(offsets.keys)
             discoverJSONLFiles(at: root, into: &paths)
         } else {
-            paths = Set(states.compactMap { path, state in
-                state.active || !state.tools.isEmpty ? path : nil
-            })
+            if scopes.contains(.recentDiscovery) {
+                for directory in CodexRecentDirectoryDiscovery.dateLeafDirectories(under: root, limit: 2) {
+                    discoverJSONLFiles(at: directory, into: &paths)
+                }
+            }
+            if scopes.contains(.active) {
+                paths.formUnion(states.compactMap { path, state in
+                    state.active || !state.tools.isEmpty ? path : nil
+                })
+            }
         }
+
         for path in paths {
             readAppendedLines(at: URL(fileURLWithPath: path))
         }
