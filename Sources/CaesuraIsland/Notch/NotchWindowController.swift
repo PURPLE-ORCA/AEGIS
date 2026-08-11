@@ -38,14 +38,19 @@ final class NotchWindowController: NSWindowController {
             }
         )
 
-        // Set the hosting view as the panel's content view directly
         let hostingView = ClickThroughHostingView(rootView: contentView)
-        // The panel owns and animates its frame explicitly. Leaving SwiftUI's
-        // automatic hosting-size propagation enabled makes NSHostingView update
-        // the window's content-size constraints during the same display cycle,
-        // which AppKit treats as a fatal recursive constraint update.
         hostingView.sizingOptions = []
-        panel.contentView = hostingView
+        hostingView.frame = NSRect(origin: .zero, size: initialFrame.size)
+        hostingView.autoresizingMask = [.width, .height]
+
+        // Keep NSHostingView one level below the window's content view. Even
+        // with empty sizingOptions, a direct hosting content view still asks
+        // AppKit to refresh window size extrema during transform updates. That
+        // can recurse into the active constraint pass and terminate the app.
+        let contentContainer = NSView(frame: hostingView.frame)
+        contentContainer.autoresizesSubviews = true
+        contentContainer.addSubview(hostingView)
+        panel.contentView = contentContainer
 
         // Ordering once is required before applying the custom window level.
         // Keep it transparent until presence policy decides whether this
