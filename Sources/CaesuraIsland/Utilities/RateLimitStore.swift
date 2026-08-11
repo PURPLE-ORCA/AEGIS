@@ -6,6 +6,7 @@ import Combine
 /// the "Xh / Xm / Xd remaining" formatting the bar prints.
 struct RateLimit {
     let remainingPercentage: Int
+    let remainingFraction: Double
     let resetsAt: Date
     let windowLabel: String
 
@@ -30,7 +31,9 @@ struct RateLimit {
 
     init?(window: WindowUsage, fallbackLabel: String) {
         guard let reset = window.resetAt else { return nil }
+        let remaining = max(0, min(1, 1 - window.usedPercent))
         self.remainingPercentage = max(0, min(100, 100 - window.percentInt))
+        self.remainingFraction = remaining
         self.resetsAt = reset
         self.windowLabel = Self.label(for: window.windowSeconds) ?? fallbackLabel
     }
@@ -51,17 +54,25 @@ struct ProviderUsage {
     let sevenDay: RateLimit?
     let plan: String?
     let error: String?
+    let runway: QuotaRunway?
 
-    static let empty = ProviderUsage(fiveHour: nil, sevenDay: nil, plan: nil, error: nil)
+    static let empty = ProviderUsage(
+        fiveHour: nil,
+        sevenDay: nil,
+        plan: nil,
+        error: nil,
+        runway: nil
+    )
 }
 
-/// Fetches Codex usage on a five-minute timer and publishes the latest snapshot.
+/// Fetches Codex usage on a one-minute timer and publishes the latest snapshot.
 @MainActor
 final class RateLimitStore: ObservableObject {
     @Published private(set) var usage: [String: ProviderUsage] = [:]
 
     private var timer: Timer?
     private let refreshInterval: TimeInterval = 60
+    private var runwayEstimator = QuotaRunwayEstimator()
 
     init() {
         // Kick off an initial fetch and start the refresh timer.
@@ -89,7 +100,19 @@ final class RateLimitStore: ObservableObject {
     }
 
     func refresh() async {
-        usage["codex"] = Self.snapshot(from: await UsageFetcher.fetchCodex())
+        let snapshot = Self.snapshot(from: await UsageFetcher.fetchCodex())
+        let runway = runwayEstimator.record(
+            providerID: AIProvider.codex.id,
+            fiveHour: snapshot.fiveHour,
+            sevenDay: snapshot.sevenDay
+        )
+        usage["codex"] = ProviderUsage(
+            fiveHour: snapshot.fiveHour,
+            sevenDay: snapshot.sevenDay,
+            plan: snapshot.plan,
+            error: snapshot.error,
+            runway: runway
+        )
     }
 
     private static func snapshot(from app: AppUsage) -> ProviderUsage {
@@ -97,7 +120,8 @@ final class RateLimitStore: ObservableObject {
             fiveHour: RateLimit(window: app.fiveHour, fallbackLabel: "5h"),
             sevenDay: RateLimit(window: app.weekly, fallbackLabel: "7d"),
             plan: app.plan,
-            error: app.fiveHour.error ?? app.weekly.error
+            error: app.fiveHour.error ?? app.weekly.error,
+            runway: nil
         )
     }
 }

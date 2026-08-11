@@ -61,6 +61,21 @@ struct RateLimitBar: View {
                     .foregroundColor(.white.opacity(0.4))
             }
 
+            if let runway = snapshot.runway {
+                Text("|")
+                    .font(theme.font(size: 10))
+                    .foregroundColor(.white.opacity(0.2))
+                Text("RUNWAY")
+                    .font(theme.font(size: 8, weight: .heavy))
+                    .foregroundColor(.white.opacity(0.4))
+                    .kerning(0.6)
+                Text(runway.status.label)
+                    .font(theme.font(size: 10, weight: .bold))
+                    .foregroundColor(color(for: runway.status))
+                    .help("Quota runway based on the \(runway.windowLabel) window")
+                    .accessibilityLabel("Quota runway \(runway.status.label)")
+            }
+
             // No data yet (auth error, no token, still loading). Surface a
             // compact hint instead of an empty row so users know why it's blank.
             if snapshot.fiveHour == nil && snapshot.sevenDay == nil {
@@ -77,5 +92,13 @@ struct RateLimitBar: View {
         if pct <= 30 { return .orange }
         if pct <= 50 { return .yellow }
         return .green
+    }
+
+    private func color(for status: QuotaRunwayStatus) -> Color {
+        switch status {
+        case .comfortable: return .green
+        case .watch: return .orange
+        case .tight: return .red
+        }
     }
 }
