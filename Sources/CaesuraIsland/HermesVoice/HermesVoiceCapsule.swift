@@ -129,7 +129,6 @@ struct HermesVoiceCapsuleView: View {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .stroke(model.phase.accent.opacity(0.45), lineWidth: 1)
                 )
-                .shadow(color: model.phase.accent.opacity(0.22), radius: 18, y: 8)
         )
         .padding(20)
         .accessibilityElement(children: .combine)
