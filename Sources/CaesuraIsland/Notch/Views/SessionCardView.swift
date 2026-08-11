@@ -2,12 +2,22 @@ import SwiftUI
 
 struct SessionCardView: View {
     @Environment(\.notchTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let session: Session
-    var compact = false
     var onDone: (() -> Void)? = nil
+
+    @State private var isHovering = false
+
+    private var showsDetails: Bool {
+        isHovering
+    }
 
     private var isActive: Bool {
         session.status == .thinking || session.status == .toolUse
+    }
+
+    private var morphAnimation: Animation {
+        reduceMotion ? NotchMotion.reducedSessionCard : NotchMotion.sessionCard
     }
 
     private var statusAccent: Color {
@@ -38,10 +48,63 @@ struct SessionCardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: compact ? 6 : 8) {
-            // Row 1: mascot + title + effort + time
+        VStack(alignment: .leading, spacing: 0) {
+            compactMessage
+
+            if showsDetails {
+                detailContent
+                    .transition(.opacity)
+            }
+        }
+        .clipped()
+        .notchCard(theme, tint: cardTint, active: isActive, ink: cardInk)
+        .contentShape(RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous))
+        .overlay {
+            Button {
+                TerminalJumper.jump(to: session)
+            } label: {
+                Color.clear
+                    .contentShape(RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open \(session.provider.displayName) session \(session.displayName)")
+            .accessibilityValue(SessionCardPresentation.preview(for: session))
+            .accessibilityHint("Opens this session in its app or terminal when activated.")
+        }
+        .onHover { hovering in
+            withAnimation(morphAnimation) {
+                isHovering = hovering
+            }
+        }
+    }
+
+    private var compactMessage: some View {
+        HStack(alignment: .center, spacing: 12) {
+            SessionMascot(
+                status: session.status,
+                size: 24,
+                animated: isActive,
+                provider: session.provider
+            )
+
+            Text(MarkdownText.inline(SessionCardPresentation.preview(for: session)))
+                .font(theme.font(size: 12, weight: .medium))
+                .foregroundColor(theme.cardForeground.opacity(0.90))
+                .multilineTextAlignment(.leading)
+                .lineLimit(2)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+    }
+
+    private var detailContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Row 1: title + effort + time. The compact mascot/message row
+            // remains mounted above this content throughout the transition.
             HStack(spacing: 8) {
-                SessionMascot(status: session.status, size: 18, provider: session.provider)
                 Text(session.displayName)
                     .font(theme.font(size: 13, weight: .heavy))
                     .foregroundColor(theme.cardForeground)
@@ -70,7 +133,7 @@ struct SessionCardView: View {
                 Text(prompt)
                     .font(theme.font(size: 11))
                     .foregroundColor(theme.cardForeground.opacity(0.7))
-                    .lineLimit(compact ? 1 : 2)
+                    .lineLimit(2)
                     .multilineTextAlignment(.leading)
             }
 
@@ -82,7 +145,7 @@ struct SessionCardView: View {
             }
 
             // Idle conversation sub-box
-            if !compact, session.status == .idle, session.lastAssistantMessage != nil {
+            if session.status == .idle, session.lastAssistantMessage != nil {
                 VStack(alignment: .leading, spacing: 6) {
                     if let msg = session.lastUserMessage {
                         HStack(alignment: .top, spacing: 6) {
@@ -131,21 +194,9 @@ struct SessionCardView: View {
                 )
             }
         }
-        .padding(.horizontal, compact ? 10 : 12)
-        .padding(.vertical, compact ? 8 : 10)
-        .notchCard(theme, tint: cardTint, active: isActive, ink: cardInk)
-        .contentShape(Rectangle())
-        .overlay {
-            Button {
-                TerminalJumper.jump(to: session)
-            } label: {
-                Color.clear
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open \(session.provider.displayName) session \(session.displayName)")
-            .accessibilityHint("Opens this session in its app or terminal")
-        }
+        .padding(.horizontal, 12)
+        .padding(.top, 2)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder

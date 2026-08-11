@@ -88,7 +88,7 @@ final class NotchWindowController: NSWindowController {
             .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.repositionWindow()
+                self?.repositionExpandedContentWindow()
             }
             .store(in: &cancellables)
 
@@ -196,6 +196,28 @@ final class NotchWindowController: NSWindowController {
         }
     }
 
+    /// The expanded session list already reports its interpolated SwiftUI
+    /// height while a card opens or closes. Follow that presentation height
+    /// directly; starting another tween here makes the panel chase the card
+    /// and restart on every preference update.
+    private func repositionExpandedContentWindow() {
+        guard let panel = window else { return }
+        animationDisplayLink?.invalidate()
+        animationDisplayLink = nil
+
+        let target = viewModel.currentSize
+        let screen = ScreenDetector.notchScreen.frame
+        panel.setFrame(
+            NSRect(
+                x: screen.midX - target.width / 2,
+                y: screen.maxY - target.height,
+                width: target.width,
+                height: target.height
+            ),
+            display: false
+        )
+    }
+
     private func repositionWindow() {
         guard let panel = window else { return }
         let target = viewModel.currentSize
@@ -218,10 +240,27 @@ final class NotchWindowController: NSWindowController {
     /// `Timer.scheduledTimer` at 60Hz with `display: true`, which forced
     /// synchronous full-window redraws and could jank when anything else
     /// touched the main thread mid-expand.
-    private func animatePanelToSize(_ targetSize: NSSize, duration: TimeInterval) {
+    private func animatePanelToSize(
+        _ targetSize: NSSize,
+        duration: TimeInterval
+    ) {
         guard let panel = window else { return }
         animationDisplayLink?.invalidate()
         animationDisplayLink = nil
+
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            let screen = ScreenDetector.notchScreen.frame
+            panel.setFrame(
+                NSRect(
+                    x: screen.midX - targetSize.width / 2,
+                    y: screen.maxY - targetSize.height,
+                    width: targetSize.width,
+                    height: targetSize.height
+                ),
+                display: false
+            )
+            return
+        }
 
         let startSize = panel.frame.size
         let dw = targetSize.width - startSize.width

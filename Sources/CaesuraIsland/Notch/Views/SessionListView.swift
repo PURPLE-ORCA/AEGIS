@@ -154,10 +154,7 @@ struct SessionListView: View {
                                     if !isCollapsed {
                                         VStack(spacing: 6) {
                                             ForEach(cards, id: \.id) { session in
-                                                SessionCardView(
-                                                    session: session,
-                                                    compact: projection.usesCompactCards
-                                                )
+                                                SessionCardView(session: session)
                                             }
                                         }
                                     }
@@ -291,8 +288,6 @@ private struct SessionListContentHeightKey: PreferenceKey {
 /// filter recovery out of the view avoids repeating the same dictionary scan
 /// throughout a SwiftUI body update.
 struct SessionListProjection {
-    static let compactCardThreshold = 4
-
     let sessions: [Session]
     let presentProviders: [AIProvider]
     let visibleProviders: [AIProvider]
@@ -324,10 +319,6 @@ struct SessionListProjection {
 
     var presentProviderIDs: [String] {
         presentProviders.map(\.id)
-    }
-
-    var usesCompactCards: Bool {
-        sessions.count >= Self.compactCardThreshold
     }
 
     func sessions(for provider: AIProvider) -> [Session] {

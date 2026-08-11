@@ -235,20 +235,10 @@ struct FinishedView: View {
 
 enum FinishedMessagePresentation {
     static func preview(for session: Session, maximumLength: Int = 280) -> String {
-        let limit = max(1, maximumLength)
-        guard let reply = session.lastAssistantMessage else {
-            return "\(session.displayName) finished"
-        }
-
-        let flattened = reply
-            .replacingOccurrences(of: "```", with: "")
-            .split(whereSeparator: { $0.isWhitespace })
-            .joined(separator: " ")
-
-        guard !flattened.isEmpty else {
-            return "\(session.displayName) finished"
-        }
-        guard flattened.count > limit else { return flattened }
-        return String(flattened.prefix(limit - 1)) + "…"
+        SessionMessagePresentation.preview(
+            session.lastAssistantMessage,
+            fallback: "\(session.displayName) finished",
+            maximumLength: maximumLength
+        )
     }
 }

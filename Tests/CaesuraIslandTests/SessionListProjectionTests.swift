@@ -28,18 +28,6 @@ final class SessionListProjectionTests: XCTestCase {
         XCTAssertEqual(projection.rateLimitProvider, .codex)
     }
 
-    func testCompactCardsStartAtThreshold() {
-        let below = (0..<(SessionListProjection.compactCardThreshold - 1)).map {
-            makeSession(id: "below-\($0)", status: .idle, activity: Date())
-        }
-        let atThreshold = (0..<SessionListProjection.compactCardThreshold).map {
-            makeSession(id: "threshold-\($0)", status: .idle, activity: Date())
-        }
-
-        XCTAssertFalse(SessionListProjection(sessions: below, selectedProvider: nil).usesCompactCards)
-        XCTAssertTrue(SessionListProjection(sessions: atThreshold, selectedProvider: nil).usesCompactCards)
-    }
-
     func testSessionListWindowFitsSmallContentAndCapsLargeContent() {
         XCTAssertEqual(
             SessionListWindowLayout.fittedHeight(chromeHeight: 44, contentHeight: 80),
