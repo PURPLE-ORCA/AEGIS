@@ -40,6 +40,17 @@ final class SessionListProjectionTests: XCTestCase {
         XCTAssertTrue(SessionListProjection(sessions: atThreshold, selectedProvider: nil).usesCompactCards)
     }
 
+    func testSessionListWindowFitsSmallContentAndCapsLargeContent() {
+        XCTAssertEqual(
+            SessionListWindowLayout.fittedHeight(chromeHeight: 44, contentHeight: 80),
+            124
+        )
+        XCTAssertEqual(
+            SessionListWindowLayout.fittedHeight(chromeHeight: 76, contentHeight: 500),
+            SessionListWindowLayout.maximumHeight
+        )
+    }
+
     private func makeSession(
         id: String,
         status: SessionStatus,

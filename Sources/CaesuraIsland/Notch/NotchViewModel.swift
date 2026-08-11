@@ -22,6 +22,10 @@ final class NotchViewModel: ObservableObject {
     // MARK: - Published State
     @Published var state: NotchState = .collapsed
     @Published var isHovered = false
+    /// A completion notification outlives the provider's live session entry.
+    /// Keep the value snapshot that triggered the popup so a fast session
+    /// removal can never leave the finished window rendering an empty fallback.
+    @Published private(set) var finishedSessionSnapshot: Session?
 
     // MARK: - Dimensions
     // Vibe Island uses Y=0 (screen top) with large windows.
@@ -41,16 +45,23 @@ final class NotchViewModel: ObservableObject {
         let height = ScreenDetector.notchHeight
         return NSSize(width: width, height: height)
     }
-    // Expanded: compact, fits ~3 session cards
-    static let expandedSize = NSSize(width: 600, height: 320)
+    // Expanded session list grows to its measured content, capped at the old
+    // three-card viewport so larger workloads keep scrolling instead of taking
+    // over the screen.
+    static let expandedSize = NSSize(width: 600, height: SessionListWindowLayout.maximumHeight)
+    static let expandedMinimumHeight: CGFloat = SessionListWindowLayout.minimumHeight
     // Permission: wide enough for details
     static let permissionSize = NSSize(width: 600, height: 380)
     // Question: taller for multiple questions
     static let questionSize = NSSize(width: 600, height: 480)
-    // Finished notification: compact, just one card
-    static let finishedSize = NSSize(width: 600, height: 380)
+    // Finished notification: one glanceable message card below the hardware
+    // notch. Details expand only after the user clicks the card.
+    static var finishedSize: NSSize {
+        NSSize(width: 600, height: max(104, notchOverlap + 76))
+    }
 
-    // Dynamic content height — set when showing permission/finished based on actual content
+    // Dynamic content heights — measured by their views as content changes.
+    @Published var dynamicExpandedHeight: CGFloat? = nil
     @Published var dynamicPermissionHeight: CGFloat? = nil
     @Published var dynamicFinishedHeight: CGFloat? = nil
 
@@ -59,7 +70,10 @@ final class NotchViewModel: ObservableObject {
         case .collapsed:
             return Self.collapsedSize
         case .expanded:
-            return Self.expandedSize
+            return NSSize(
+                width: Self.expandedSize.width,
+                height: dynamicExpandedHeight ?? Self.expandedMinimumHeight
+            )
         case .finished:
             return NSSize(width: 600, height: dynamicFinishedHeight ?? Self.finishedSize.height)
         case .permission:
@@ -106,10 +120,6 @@ final class NotchViewModel: ObservableObject {
         )
     }
 
-    static func estimateVisualLinesPublic(_ text: String) -> Int {
-        estimateVisualLines(text)
-    }
-
     private static func estimateVisualLines(_ text: String) -> Int {
         let charsPerLine = 72
         var lines = 0
@@ -117,22 +127,6 @@ final class NotchViewModel: ObservableObject {
             lines += max(1, (line.count + charsPerLine - 1) / charsPerLine)
         }
         return lines
-    }
-
-    static func computeFinishedHeight(hasUser: Bool, replyLines: Int) -> CGFloat {
-        var h: CGFloat = 0
-        h += 10 + 14   // top bar
-        h += 12 + 22 + 10 // session header
-        h += 22 + 10    // tool pill (Done) row
-        if hasUser {
-            h += 30 + 8 // user row
-        }
-        if replyLines > 0 {
-            let bodyHeight = min(CGFloat(replyLines) * 14 + 20, 260)
-            h += 24 + bodyHeight
-        }
-        h += 12 + 36 + 12 // spacer + dismiss + bottom padding
-        return min(max(h, 200), 600)
     }
 
     var isExpanded: Bool {
@@ -146,6 +140,7 @@ final class NotchViewModel: ObservableObject {
 
     func expand(holdSeconds: Double? = nil) {
         guard state == .collapsed else { return }
+        dynamicExpandedHeight = Self.expandedMinimumHeight
         state = .expanded
         scheduleAutoCollapse(delay: holdSeconds ?? 0.6)
     }
@@ -153,6 +148,8 @@ final class NotchViewModel: ObservableObject {
     func collapse() {
         guard state != .collapsed else { return }
         state = .collapsed
+        dynamicExpandedHeight = nil
+        finishedSessionSnapshot = nil
         finishedAutoCollapseDeadline = nil
         autoCollapseTask?.cancel()
     }
@@ -169,16 +166,24 @@ final class NotchViewModel: ObservableObject {
         autoCollapseTask?.cancel()
     }
 
-    func showFinished(sessionId: String, contentHeight: CGFloat? = nil) {
+    func updateExpandedContentHeight(_ height: CGFloat) {
+        let fitted = min(max(height, Self.expandedMinimumHeight), Self.expandedSize.height)
+        guard abs((dynamicExpandedHeight ?? Self.expandedMinimumHeight) - fitted) > 0.5 else { return }
+        dynamicExpandedHeight = fitted
+    }
+
+    func showFinished(session: Session) {
         autoCollapseTask?.cancel()
         finishedAutoCollapseDeadline = Date().addingTimeInterval(Self.finishedHoverCeiling)
-        dynamicFinishedHeight = contentHeight
-        state = .finished(sessionId: sessionId)
+        finishedSessionSnapshot = session
+        dynamicFinishedHeight = Self.finishedSize.height
+        state = .finished(sessionId: session.id)
         scheduleAutoCollapse(delay: 3.0)
     }
 
     func showPermission(sessionId: String, contentHeight: CGFloat? = nil) {
         autoCollapseTask?.cancel()
+        finishedSessionSnapshot = nil
         dynamicPermissionHeight = contentHeight
         state = .permission(sessionId: sessionId)
     }
@@ -189,6 +194,7 @@ final class NotchViewModel: ObservableObject {
 
     func showQuestion(sessionId: String) {
         autoCollapseTask?.cancel()
+        finishedSessionSnapshot = nil
         suppressedQuestionSessionIDs.remove(sessionId)
         state = .question(sessionId: sessionId)
     }

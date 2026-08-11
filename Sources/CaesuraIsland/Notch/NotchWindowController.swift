@@ -84,6 +84,14 @@ final class NotchWindowController: NSWindowController {
             }
             .store(in: &cancellables)
 
+        viewModel.$dynamicExpandedHeight
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.repositionWindow()
+            }
+            .store(in: &cancellables)
+
         reconcileWindowPresence(state: viewModel.state)
         panel.alphaValue = 1
 
@@ -126,9 +134,8 @@ final class NotchWindowController: NSWindowController {
                 viewModel.showQuestion(sessionId: sessionId)
             case .statusChanged(let sessionId, let status) where status == .idle:
                 // The agent finished — show a focused notification card.
-                if !viewModel.isExpanded {
-                    let height = computeFinishedHeight(sessionId: sessionId)
-                    viewModel.showFinished(sessionId: sessionId, contentHeight: height)
+                if !viewModel.isExpanded, let session = sessionStore.sessions[sessionId] {
+                    viewModel.showFinished(session: session)
                 }
             case .pendingDismissedExternally(let sessionId):
                 // Permission/question was answered in the terminal — dismiss
@@ -291,14 +298,6 @@ final class NotchWindowController: NSWindowController {
         return lines
     }
 
-    private func computeFinishedHeight(sessionId: String) -> CGFloat {
-        guard let session = sessionStore.sessions[sessionId] else {
-            return NotchViewModel.finishedSize.height
-        }
-        let hasUser = session.lastUserMessage != nil
-        let replyLines = session.lastAssistantMessage.map { estimateVisualLines($0) } ?? 0
-        return NotchViewModel.computeFinishedHeight(hasUser: hasUser, replyLines: replyLines)
-    }
 }
 
 enum DecisionPresentationPolicy {

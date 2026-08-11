@@ -6,6 +6,7 @@ struct SessionListView: View {
     @ObservedObject var settingsStore: SettingsStore
     let onCollapse: () -> Void
     let onOpenSettings: () -> Void
+    let onContentHeightChange: (CGFloat) -> Void
 
     @Environment(\.notchTheme) private var theme
 
@@ -15,6 +16,8 @@ struct SessionListView: View {
     /// Provider ids that the user has collapsed — their cards are hidden
     /// behind the section header until expanded again.
     @State private var collapsedProviders: Set<String> = []
+    @State private var measuredChromeHeight: CGFloat = 44
+    @State private var measuredListHeight: CGFloat = 60
 
     /// Tapping the rate limit bar cycles selectedProvider through every
     /// provider that actually has data to show, skipping ones that would
@@ -43,52 +46,62 @@ struct SessionListView: View {
         let displayedRateLimitProvider = selectedRateLimitProvider ?? projection.rateLimitProvider
 
         VStack(spacing: 0) {
-            // Top row: rate limits + sound + gear
-            HStack(spacing: 8) {
-                RateLimitBar(
-                    rateLimitStore: rateLimitStore,
-                    provider: displayedRateLimitProvider,
-                    onTap: { cycleRateLimitProvider(current: displayedRateLimitProvider) }
-                )
-                Spacer()
-                Button(action: { settingsStore.soundEnabled.toggle() }) {
-                    Image(systemName: settingsStore.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.white.opacity(settingsStore.soundEnabled ? 0.6 : 0.3))
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(settingsStore.soundEnabled ? "Mute sounds" : "Unmute sounds")
-                Button(action: onOpenSettings) {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.white.opacity(0.4))
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open settings")
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
-
-            // Filter chips — only show when there are >=2 providers active.
-            // Horizontally scrollable so many providers (we support a dozen+)
-            // keep their natural width instead of compressing into slivers.
-            if projection.presentProviders.count >= 2 {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 5) {
-                        filterChip(provider: nil, label: "ALL", count: sessionStore.activeSessions.count, color: .white)
-                        ForEach(projection.presentProviders) { p in
-                            filterChip(provider: p, label: p.displayName.uppercased(), count: projection.sessions(for: p).count, color: p.accentColor)
-                        }
+            VStack(spacing: 0) {
+                // Top row: rate limits + sound + gear
+                HStack(spacing: 8) {
+                    RateLimitBar(
+                        rateLimitStore: rateLimitStore,
+                        provider: displayedRateLimitProvider,
+                        onTap: { cycleRateLimitProvider(current: displayedRateLimitProvider) }
+                    )
+                    Spacer()
+                    Button(action: { settingsStore.soundEnabled.toggle() }) {
+                        Image(systemName: settingsStore.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.white.opacity(settingsStore.soundEnabled ? 0.6 : 0.3))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, 14)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(settingsStore.soundEnabled ? "Mute sounds" : "Unmute sounds")
+                    Button(action: onOpenSettings) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.white.opacity(0.4))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open settings")
                 }
-                .padding(.top, 8)
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
                 .padding(.bottom, 6)
+
+                // Filter chips — only show when there are >=2 providers active.
+                // Horizontally scrollable so many providers (we support a dozen+)
+                // keep their natural width instead of compressing into slivers.
+                if projection.presentProviders.count >= 2 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 5) {
+                            filterChip(provider: nil, label: "ALL", count: sessionStore.activeSessions.count, color: .white)
+                            ForEach(projection.presentProviders) { p in
+                                filterChip(provider: p, label: p.displayName.uppercased(), count: projection.sessions(for: p).count, color: p.accentColor)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 6)
+                }
+            }
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: SessionListChromeHeightKey.self,
+                        value: geometry.size.height
+                    )
+                }
             }
 
             if sessionStore.activeSessions.isEmpty {
@@ -107,7 +120,7 @@ struct SessionListView: View {
                 Spacer()
             } else {
                 ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 12) {
+                    VStack(spacing: 12) {
                         ForEach(projection.visibleProviders) { provider in
                             let cards = projection.sessions(for: provider)
                             if !cards.isEmpty {
@@ -139,7 +152,7 @@ struct SessionListView: View {
                                         .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
                                     }
                                     if !isCollapsed {
-                                        LazyVStack(spacing: 6) {
+                                        VStack(spacing: 6) {
                                             ForEach(cards, id: \.id) { session in
                                                 SessionCardView(
                                                     session: session,
@@ -154,14 +167,48 @@ struct SessionListView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
+                    .background {
+                        GeometryReader { geometry in
+                            Color.clear.preference(
+                                key: SessionListContentHeightKey.self,
+                                value: geometry.size.height
+                            )
+                        }
+                    }
                 }
+                .frame(height: SessionListWindowLayout.viewportHeight(
+                    chromeHeight: measuredChromeHeight,
+                    contentHeight: measuredListHeight
+                ))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .onPreferenceChange(SessionListChromeHeightKey.self) { height in
+            guard height > 0 else { return }
+            measuredChromeHeight = height
+            reportContentHeight(chromeHeight: height, listHeight: measuredListHeight)
+        }
+        .onPreferenceChange(SessionListContentHeightKey.self) { height in
+            guard height > 0 else { return }
+            measuredListHeight = height
+            reportContentHeight(chromeHeight: measuredChromeHeight, listHeight: height)
+        }
+        .onAppear {
+            reportContentHeight(chromeHeight: measuredChromeHeight, listHeight: measuredListHeight)
+        }
         .onChange(of: projection.presentProviderIDs) { _, ids in
             guard let selectedProvider, !ids.contains(selectedProvider.id) else { return }
             self.selectedProvider = nil
         }
+    }
+
+    private func reportContentHeight(chromeHeight: CGFloat, listHeight: CGFloat) {
+        onContentHeightChange(
+            SessionListWindowLayout.fittedHeight(
+                chromeHeight: chromeHeight,
+                contentHeight: listHeight
+            )
+        )
     }
 
     @ViewBuilder
@@ -208,6 +255,35 @@ struct SessionListView: View {
                 .foregroundColor(.white.opacity(0.4))
                 .rotationEffect(.degrees(collapsed ? 0 : 90))
         }
+    }
+}
+
+enum SessionListWindowLayout {
+    static let minimumHeight: CGFloat = 104
+    static let maximumHeight: CGFloat = 320
+
+    static func fittedHeight(chromeHeight: CGFloat, contentHeight: CGFloat) -> CGFloat {
+        min(max(chromeHeight + contentHeight, minimumHeight), maximumHeight)
+    }
+
+    static func viewportHeight(chromeHeight: CGFloat, contentHeight: CGFloat) -> CGFloat {
+        max(1, fittedHeight(chromeHeight: chromeHeight, contentHeight: contentHeight) - chromeHeight)
+    }
+}
+
+private struct SessionListChromeHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct SessionListContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

@@ -12,8 +12,58 @@ struct FinishedView: View {
     @State private var isExpanded = false
 
     var body: some View {
+        Group {
+            if isExpanded {
+                details
+                    .transition(.opacity)
+            } else {
+                compactMessage
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The completion popup starts as one glanceable object: agent + reply.
+    /// Everything else is deliberately deferred until the user asks for it.
+    private var compactMessage: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: NotchViewModel.notchOverlap + 8)
+
+            Button(action: { setExpanded(true) }) {
+                HStack(alignment: .center, spacing: 12) {
+                    SessionMascot(
+                        status: .idle,
+                        size: 24,
+                        animated: false,
+                        provider: session.provider
+                    )
+
+                    Text(MarkdownText.inline(FinishedMessagePresentation.preview(for: session)))
+                        .font(theme.font(size: 12, weight: .medium))
+                        .foregroundColor(theme.cardForeground.opacity(0.90))
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+                .notchCard(theme, tint: session.provider.accentColor)
+                .contentShape(RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Message from \(session.provider.displayName)")
+            .accessibilityValue(FinishedMessagePresentation.preview(for: session))
+            .accessibilityHint("Shows the full reply and session details")
+            .padding(.horizontal, 14)
+            .padding(.bottom, 12)
+        }
+    }
+
+    private var details: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Top bar
             HStack(spacing: 10) {
                 RateLimitBar(rateLimitStore: rateLimitStore, provider: session.provider)
                 Spacer()
@@ -26,6 +76,7 @@ struct FinishedView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(settingsStore.soundEnabled ? "Mute sounds" : "Unmute sounds")
+
                 Button(action: onOpenSettings) {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 14))
@@ -35,17 +86,27 @@ struct FinishedView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open settings")
+
+                Button(action: { setExpanded(false) }) {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.55))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Collapse message")
             }
             .padding(.horizontal, 14)
             .padding(.top, 10)
             .padding(.bottom, 6)
 
-            // Session header + Finished badge
             HStack(spacing: 8) {
                 SessionMascot(status: .idle, size: 18, provider: session.provider)
                 Text(session.displayName)
                     .font(theme.font(size: 13, weight: .bold))
                     .foregroundColor(.white)
+                    .lineLimit(1)
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark")
                         .font(.system(size: 9, weight: .bold))
@@ -65,27 +126,6 @@ struct FinishedView: View {
             .padding(.top, 12)
             .padding(.bottom, 10)
 
-            // Tool pill (Done) + subtitle
-            HStack(spacing: 10) {
-                HStack(spacing: 4) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 10))
-                    Text("Done")
-                        .font(theme.font(size: 11, weight: .bold))
-                }
-                .foregroundColor(.green)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .notchPill(theme, fill: .green.opacity(0.15))
-                Text("replied to your message")
-                    .font(theme.font(size: 11))
-                    .foregroundColor(.white.opacity(0.65))
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 10)
-
-            // User prompt row (like path row in permission)
             if let userMsg = session.lastUserMessage {
                 HStack(spacing: 7) {
                     Image(systemName: "person.fill")
@@ -109,8 +149,7 @@ struct FinishedView: View {
                 .padding(.bottom, 8)
             }
 
-            // Reply content card
-            if let reply = session.lastAssistantMessage {
+            if let reply = session.lastAssistantMessage, !reply.isEmpty {
                 VStack(spacing: 0) {
                     HStack {
                         HStack(spacing: 5) {
@@ -126,15 +165,6 @@ struct FinishedView: View {
                         Text(replyMetric(reply))
                             .font(theme.font(size: 9))
                             .foregroundColor(theme.wellForeground.opacity(0.4))
-                        Button(action: {
-                            isExpanded.toggle()
-                            onToggleExpand(isExpanded)
-                        }) {
-                            Image(systemName: isExpanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(theme.wellForeground.opacity(0.55))
-                        }
-                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -152,7 +182,7 @@ struct FinishedView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
                     }
-                    .frame(maxHeight: isExpanded ? 400 : 240)
+                    .frame(maxHeight: 360)
                     .background(
                         UnevenRoundedRectangle(bottomLeadingRadius: theme.boxRadius, bottomTrailingRadius: theme.boxRadius)
                             .fill(theme.boxFill)
@@ -167,7 +197,6 @@ struct FinishedView: View {
 
             Spacer(minLength: 10)
 
-            // Dismiss button (full width, green)
             let dismissInk = theme.buttonInk(.green)
             Button(action: onDismiss) {
                 HStack(spacing: 6) {
@@ -186,17 +215,13 @@ struct FinishedView: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 12)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Tap card body → jump to the terminal. The chrome buttons (sound,
-        // gear, Dismiss) have explicit `.contentShape(Rectangle())` on
-        // their labels so SwiftUI's hit testing routes taps to them
-        // before falling through to this outer gesture (issue #28 was
-        // about near-misses absorbing into the outer; we now make the
-        // button hit zones explicit instead of removing the outer).
-        .contentShape(Rectangle())
-        .onTapGesture {
-            TerminalJumper.jump(to: session)
+    }
+
+    private func setExpanded(_ expanded: Bool) {
+        withAnimation(.easeOut(duration: 0.18)) {
+            isExpanded = expanded
         }
+        onToggleExpand(expanded)
     }
 
     private func replyMetric(_ reply: String) -> String {
@@ -205,5 +230,25 @@ struct FinishedView: View {
         let lineLabel = "\(lines) line\(lines == 1 ? "" : "s")"
         let byteLabel = bytes >= 1024 ? String(format: "%.1fkB", Double(bytes) / 1024.0) : "\(bytes)B"
         return "\(lineLabel) · \(byteLabel)"
+    }
+}
+
+enum FinishedMessagePresentation {
+    static func preview(for session: Session, maximumLength: Int = 280) -> String {
+        let limit = max(1, maximumLength)
+        guard let reply = session.lastAssistantMessage else {
+            return "\(session.displayName) finished"
+        }
+
+        let flattened = reply
+            .replacingOccurrences(of: "```", with: "")
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+
+        guard !flattened.isEmpty else {
+            return "\(session.displayName) finished"
+        }
+        guard flattened.count > limit else { return flattened }
+        return String(flattened.prefix(limit - 1)) + "…"
     }
 }

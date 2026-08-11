@@ -120,11 +120,13 @@ struct NotchContentView: View {
                 rateLimitStore: rateLimitStore,
                 settingsStore: settingsStore,
                 onCollapse: { viewModel.collapse() },
-                onOpenSettings: onOpenSettings
+                onOpenSettings: onOpenSettings,
+                onContentHeightChange: { viewModel.updateExpandedContentHeight($0) }
             )
 
         case .finished(let sessionId):
-            if let session = sessionStore.sessions[sessionId] {
+            if let session = sessionStore.sessions[sessionId]
+                ?? viewModel.finishedSessionSnapshot {
                 FinishedView(
                     session: session,
                     onDismiss: { viewModel.collapse() },
@@ -136,15 +138,14 @@ struct NotchContentView: View {
                             viewModel.cancelAutoCollapse()
                             viewModel.dynamicFinishedHeight = 560
                         } else {
-                            let hasUser = session.lastUserMessage != nil
-                            let replyLines = session.lastAssistantMessage.map { NotchViewModel.estimateVisualLinesPublic($0) } ?? 0
-                            viewModel.dynamicFinishedHeight = NotchViewModel.computeFinishedHeight(hasUser: hasUser, replyLines: replyLines)
+                            viewModel.dynamicFinishedHeight = NotchViewModel.finishedSize.height
                             viewModel.resumeFinishedAutoCollapse()
                         }
                     }
                 )
             } else {
-                CollapsedNotchView(sessionStore: sessionStore, rateLimitStore: rateLimitStore)
+                Color.clear
+                    .onAppear { viewModel.collapse() }
             }
 
         case .permission(let sessionId):
