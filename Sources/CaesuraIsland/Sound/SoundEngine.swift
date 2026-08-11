@@ -1,6 +1,29 @@
 import AVFoundation
 import Foundation
 
+private final class AudioConverterInputState: @unchecked Sendable {
+    private let buffer: AVAudioPCMBuffer
+    private let lock = NSLock()
+    private var delivered = false
+
+    init(buffer: AVAudioPCMBuffer) {
+        self.buffer = buffer
+    }
+
+    func next(status: UnsafeMutablePointer<AVAudioConverterInputStatus>) -> AVAudioBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !delivered else {
+            status.pointee = .noDataNow
+            return nil
+        }
+        delivered = true
+        status.pointee = .haveData
+        return buffer
+    }
+}
+
 enum AudioEngineLifecycleState: Equatable {
     case stopped
     case running(generation: Int)
@@ -323,13 +346,8 @@ final class SoundEngine {
         guard let outBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outFrames) else {
             return srcBuffer
         }
-        var done = false
-        let inputBlock: AVAudioConverterInputBlock = { _, status in
-            if done { status.pointee = .noDataNow; return nil }
-            done = true
-            status.pointee = .haveData
-            return srcBuffer
-        }
+        let inputState = AudioConverterInputState(buffer: srcBuffer)
+        let inputBlock: AVAudioConverterInputBlock = { _, status in inputState.next(status: status) }
         var error: NSError?
         converter.convert(to: outBuffer, error: &error, withInputFrom: inputBlock)
         if let error {
