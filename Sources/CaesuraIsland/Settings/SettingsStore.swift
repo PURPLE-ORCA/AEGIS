@@ -3,6 +3,15 @@ import Combine
 import ServiceManagement
 
 final class SettingsStore: ObservableObject {
+    @Published var hermesVoiceHandoffEnabled: Bool {
+        didSet { UserDefaults.standard.set(hermesVoiceHandoffEnabled, forKey: "hermesVoiceHandoffEnabled") }
+    }
+    @Published var hermesVoiceWorkingDirectory: String {
+        didSet { UserDefaults.standard.set(hermesVoiceWorkingDirectory, forKey: "hermesVoiceWorkingDirectory") }
+    }
+    @Published var hermesVoiceTarget: HermesHandoffTarget {
+        didSet { UserDefaults.standard.set(hermesVoiceTarget.rawValue, forKey: "hermesVoiceTarget") }
+    }
     @Published var soundEnabled: Bool {
         didSet { UserDefaults.standard.set(soundEnabled, forKey: "soundEnabled") }
     }
@@ -127,9 +136,16 @@ final class SettingsStore: ObservableObject {
 
     init() {
         let defaults = UserDefaults.standard
+        let preferredHermesDirectory = HermesHandoffConfiguration.preferredWorkingDirectory(
+            homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
+            fileExists: { FileManager.default.fileExists(atPath: $0.path) }
+        ).path
 
         // Register defaults
         defaults.register(defaults: [
+            "hermesVoiceHandoffEnabled": true,
+            "hermesVoiceWorkingDirectory": preferredHermesDirectory,
+            "hermesVoiceTarget": HermesHandoffTarget.newSession.rawValue,
             "soundEnabled": true,
             "soundVolume": Float(0.7),
             "soundProfile": SoundProfile.quietGlass.rawValue,
@@ -146,6 +162,12 @@ final class SettingsStore: ObservableObject {
             "hasSeenThemeOnboarding": false,
         ])
 
+        self.hermesVoiceHandoffEnabled = defaults.bool(forKey: "hermesVoiceHandoffEnabled")
+        self.hermesVoiceWorkingDirectory = defaults.string(forKey: "hermesVoiceWorkingDirectory")
+            ?? preferredHermesDirectory
+        self.hermesVoiceTarget = HermesHandoffTarget(
+            rawValue: defaults.string(forKey: "hermesVoiceTarget") ?? ""
+        ) ?? .newSession
         self.soundEnabled = defaults.bool(forKey: "soundEnabled")
         self.soundVolume = defaults.float(forKey: "soundVolume")
         self.soundProfile = SoundProfile(

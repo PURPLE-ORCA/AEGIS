@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let socketServer = SocketServer()
     private let soundEngine = SoundEngine()
     private let settingsStore = SettingsStore()
+    private lazy var hermesVoiceHandoffController = HermesVoiceHandoffController(settingsStore: settingsStore)
     private let rateLimitStore = RateLimitStore()
     private let codexDesktopWatcher = CodexDesktopSessionWatcher()
     private let hermesDesktopWatcher = HermesDesktopSessionWatcher()
@@ -116,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.sessionStore.handleMessage(message, respond: nil)
         }
         hermesDesktopWatcher.start()
+        hermesVoiceHandoffController.start()
 
         // Never activate a first-run window automatically: the notch is a
         // background utility and must not steal focus. Welcome and What's New
@@ -130,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         codexDesktopWatcher.stop()
         hermesDesktopWatcher.stop()
+        hermesVoiceHandoffController.stop()
         socketServer.stop()
         soundEngine.shutdown()
         cleanupPidFile()

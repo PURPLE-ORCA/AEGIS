@@ -55,6 +55,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <true/>
     <key>NSAppleEventsUsageDescription</key>
     <string>CAESURA-ISLAND uses System Events to focus the exact Hermes session you select.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>CAESURA-ISLAND records only while you hold the Push-to-Talk shortcut, then hands your request to Hermes.</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>

@@ -18,7 +18,11 @@ let package = Package(
                 .copy("../../Resources/cli-icons"),
                 .copy("../../Resources/branding"),
             ],
-            linkerSettings: [.linkedLibrary("sqlite3")]
+            linkerSettings: [
+                .linkedLibrary("sqlite3"),
+                .linkedFramework("Carbon"),
+                .linkedFramework("AVFoundation"),
+            ]
         ),
         .executableTarget(
             name: "CaesuraIslandBridge",
