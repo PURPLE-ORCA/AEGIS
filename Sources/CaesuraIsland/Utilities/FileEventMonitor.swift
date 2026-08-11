@@ -122,7 +122,6 @@ final class FileEventMonitor {
         var changed = Set<String>()
 
         for event in events {
-            let path = URL(fileURLWithPath: event.path).standardizedFileURL.path
             let eventFlags = event.flags
             let mustRescan = eventFlags & FSEventStreamEventFlags(
                 kFSEventStreamEventFlagMustScanSubDirs |
@@ -135,12 +134,14 @@ final class FileEventMonitor {
                 changed.insert(rootPath)
                 continue
             }
+            if let includeEvent, !includeEvent(event.path, eventFlags) { continue }
+
+            let path = URL(fileURLWithPath: event.path).standardizedFileURL.path
             guard path == rootPath || path.hasPrefix(rootPath + "/") else { continue }
             if !recursive, path != rootPath {
                 let relative = String(path.dropFirst(rootPath.count + 1))
                 guard !relative.contains("/") else { continue }
             }
-            if let includeEvent, !includeEvent(path, eventFlags) { continue }
 
             if path == rootPath {
                 changed.insert(path)
