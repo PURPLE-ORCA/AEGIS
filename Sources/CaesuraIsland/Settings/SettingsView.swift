@@ -47,7 +47,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .integrations:
             return "Manage hooks for the four supported agents."
         case .sound:
-            return "Per-event chimes, master volume, and custom sound packs."
+            return "Professional profiles, per-event levels, and custom sound packs."
         case .about:
             return "Version and runtime details."
         }
@@ -58,6 +58,7 @@ struct SettingsView: View {
     @ObservedObject var settingsStore: SettingsStore
     var onReloadSounds: (() -> Void)? = nil
     var onPreviewEvent: ((SoundEvent) -> Void)? = nil
+    var onPreviewProfile: ((SoundProfile) -> Void)? = nil
     var onPreviewFile: ((String) -> Void)? = nil
     @State private var soundLibraryVersion = 0   // bump to refresh library list
 
@@ -367,6 +368,44 @@ struct SettingsView: View {
             .disabled(!settingsStore.soundEnabled)
         }
 
+        Section {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Sound profile")
+                    Text(settingsStore.soundProfile.blurb)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { settingsStore.soundProfile },
+                    set: { profile in
+                        settingsStore.soundProfile = profile
+                        onPreviewProfile?(profile)
+                    }
+                )) {
+                    ForEach(SoundProfile.allCases) { profile in
+                        Text(profile.displayName).tag(profile)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 150)
+                Button { onPreviewProfile?(settingsStore.soundProfile) } label: {
+                    Image(systemName: "play.circle")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Preview \(settingsStore.soundProfile.displayName)")
+            }
+        } header: {
+            Text("Profile")
+        } footer: {
+            Text("Preview plays the completion, attention, and failure cues in sequence.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .disabled(!settingsStore.soundEnabled)
+
         Section("Events") {
             ForEach(Self.soundEventRows, id: \.event) { row in
                 soundEventRow(row)
@@ -407,7 +446,7 @@ struct SettingsView: View {
         } header: {
             Text("My Sounds")
         } footer: {
-            Text("Import .wav / .mp3 / .m4a / .aiff / .caf, then pick it for any event above. Default = the built-in calm chime.")
+            Text("Import .wav / .mp3 / .m4a / .aiff / .caf, then pick it for any event above. Default uses the selected profile.")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.leading)
@@ -430,29 +469,50 @@ struct SettingsView: View {
     private func soundEventRow(_ row: (event: SoundEvent, title: String, subtitle: String)) -> some View {
         let library = settingsStore.soundLibraryFiles()
         let _ = soundLibraryVersion
+        let eventVolume = settingsStore.soundEventVolume(for: row.event.rawValue)
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title)
                 Text(row.subtitle).font(.system(size: 11)).foregroundColor(.secondary)
             }
             Spacer()
-            Picker("", selection: Binding(
-                get: { settingsStore.soundChoice(for: row.event.rawValue) },
-                set: { settingsStore.setSoundChoice($0, for: row.event.rawValue) }
-            )) {
-                Text("Default").tag("default")
-                Text("Off").tag("off")
-                if !library.isEmpty {
-                    Divider()
-                    ForEach(library, id: \.self) { Text($0).tag($0) }
+            VStack(alignment: .trailing, spacing: 5) {
+                HStack(spacing: 8) {
+                    Picker("", selection: Binding(
+                        get: { settingsStore.soundChoice(for: row.event.rawValue) },
+                        set: { settingsStore.setSoundChoice($0, for: row.event.rawValue) }
+                    )) {
+                        Text("Default").tag("default")
+                        Text("Off").tag("off")
+                        if !library.isEmpty {
+                            Divider()
+                            ForEach(library, id: \.self) { Text($0).tag($0) }
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 150)
+                    Button { onPreviewEvent?(row.event) } label: {
+                        Image(systemName: "play.circle")
+                    }
+                    .buttonStyle(.borderless)
                 }
+
+                HStack(spacing: 7) {
+                    Image(systemName: "speaker.wave.1")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    Slider(value: Binding(
+                        get: { settingsStore.soundEventVolume(for: row.event.rawValue) },
+                        set: { settingsStore.setSoundEventVolume($0, for: row.event.rawValue) }
+                    ), in: 0...1)
+                    Text("\(Int((eventVolume * 100).rounded()))%")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(width: 34, alignment: .trailing)
+                }
+                .frame(width: 180)
+                .disabled(settingsStore.soundChoice(for: row.event.rawValue) == "off")
             }
-            .labelsHidden()
-            .frame(width: 150)
-            Button { onPreviewEvent?(row.event) } label: {
-                Image(systemName: "play.circle")
-            }
-            .buttonStyle(.borderless)
         }
     }
 

@@ -9,6 +9,9 @@ final class SettingsStore: ObservableObject {
     @Published var soundVolume: Float {
         didSet { UserDefaults.standard.set(soundVolume, forKey: "soundVolume") }
     }
+    @Published var soundProfile: SoundProfile {
+        didSet { UserDefaults.standard.set(soundProfile.rawValue, forKey: "soundProfile") }
+    }
     @Published var autoExpandOnPermission: Bool {
         didSet { UserDefaults.standard.set(autoExpandOnPermission, forKey: "autoExpandOnPermission") }
     }
@@ -69,6 +72,19 @@ final class SettingsStore: ObservableObject {
     func soundChoice(for eventRaw: String) -> String { soundAssignments[eventRaw] ?? "default" }
     func setSoundChoice(_ choice: String, for eventRaw: String) { soundAssignments[eventRaw] = choice }
 
+    /// Per-event gain applied after the selected built-in or custom sound.
+    @Published var soundEventVolumes: [String: Float] {
+        didSet {
+            if let data = try? JSONEncoder().encode(soundEventVolumes) {
+                UserDefaults.standard.set(data, forKey: "soundEventVolumes")
+            }
+        }
+    }
+    func soundEventVolume(for eventRaw: String) -> Float { soundEventVolumes[eventRaw] ?? 1 }
+    func setSoundEventVolume(_ volume: Float, for eventRaw: String) {
+        soundEventVolumes[eventRaw] = max(0, min(1, volume))
+    }
+
     static let supportedAudioExts = ["wav", "mp3", "m4a", "aiff", "caf"]
 
     /// The sound library = audio files the user has imported (and any legacy
@@ -116,6 +132,7 @@ final class SettingsStore: ObservableObject {
         defaults.register(defaults: [
             "soundEnabled": true,
             "soundVolume": Float(0.7),
+            "soundProfile": SoundProfile.quietGlass.rawValue,
             "autoExpandOnPermission": true,
             "expandOnHover": true,
             "launchAtLogin": false,
@@ -131,6 +148,9 @@ final class SettingsStore: ObservableObject {
 
         self.soundEnabled = defaults.bool(forKey: "soundEnabled")
         self.soundVolume = defaults.float(forKey: "soundVolume")
+        self.soundProfile = SoundProfile(
+            rawValue: defaults.string(forKey: "soundProfile") ?? ""
+        ) ?? .quietGlass
         self.autoExpandOnPermission = defaults.bool(forKey: "autoExpandOnPermission")
         self.expandOnHover = defaults.bool(forKey: "expandOnHover")
         self.launchAtLogin = defaults.bool(forKey: "launchAtLogin")
@@ -163,6 +183,12 @@ final class SettingsStore: ObservableObject {
             defaults.set(2, forKey: "builtInSoundVersion")
         }
         self.soundAssignments = assignments
+        if let data = defaults.data(forKey: "soundEventVolumes"),
+           let map = try? JSONDecoder().decode([String: Float].self, from: data) {
+            self.soundEventVolumes = map.mapValues { max(0, min(1, $0)) }
+        } else {
+            self.soundEventVolumes = [:]
+        }
         var selectedTheme = NotchThemeID(rawValue: defaults.string(forKey: "notchThemeID") ?? "") ?? .caesura
         if defaults.integer(forKey: "appearanceVersion") < 2 {
             selectedTheme = .caesura

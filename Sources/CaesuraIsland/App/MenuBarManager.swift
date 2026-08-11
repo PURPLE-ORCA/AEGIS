@@ -13,16 +13,18 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
     private let onQuit: () -> Void
     private let onReloadSounds: () -> Void
     private let onPreviewEvent: (SoundEvent) -> Void
+    private let onPreviewProfile: (SoundProfile) -> Void
     private let onPreviewFile: (String) -> Void
     private let onShowWelcome: () -> Void
     private let onShowWhatsNew: () -> Void
     private var settingsWindow: NSWindow?
 
-    init(settingsStore: SettingsStore, sessionStore: SessionStore, onReloadSounds: @escaping () -> Void, onPreviewEvent: @escaping (SoundEvent) -> Void, onPreviewFile: @escaping (String) -> Void, onShowWelcome: @escaping () -> Void, onShowWhatsNew: @escaping () -> Void, onQuit: @escaping () -> Void) {
+    init(settingsStore: SettingsStore, sessionStore: SessionStore, onReloadSounds: @escaping () -> Void, onPreviewEvent: @escaping (SoundEvent) -> Void, onPreviewProfile: @escaping (SoundProfile) -> Void, onPreviewFile: @escaping (String) -> Void, onShowWelcome: @escaping () -> Void, onShowWhatsNew: @escaping () -> Void, onQuit: @escaping () -> Void) {
         self.settingsStore = settingsStore
         self.sessionStore = sessionStore
         self.onReloadSounds = onReloadSounds
         self.onPreviewEvent = onPreviewEvent
+        self.onPreviewProfile = onPreviewProfile
         self.onPreviewFile = onPreviewFile
         self.onShowWelcome = onShowWelcome
         self.onShowWhatsNew = onShowWhatsNew
@@ -157,7 +159,7 @@ final class MenuBarManager: NSObject, NSMenuDelegate {
             return
         }
 
-        let view = SettingsView(settingsStore: settingsStore, onReloadSounds: onReloadSounds, onPreviewEvent: onPreviewEvent, onPreviewFile: onPreviewFile)
+        let view = SettingsView(settingsStore: settingsStore, onReloadSounds: onReloadSounds, onPreviewEvent: onPreviewEvent, onPreviewProfile: onPreviewProfile, onPreviewFile: onPreviewFile)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 580),
             styleMask: [.titled, .closable],

@@ -49,6 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsStore.$soundVolume
             .sink { [weak self] volume in self?.soundEngine.setVolume(volume) }
             .store(in: &cancellables)
+        settingsStore.$soundProfile
+            .sink { [weak self] profile in self?.soundEngine.setProfile(profile) }
+            .store(in: &cancellables)
+        settingsStore.$soundEventVolumes
+            .sink { [weak self] volumes in self?.soundEngine.applyEventVolumes(volumes) }
+            .store(in: &cancellables)
         // Per-event sound assignments (Default / Off / a library file). The
         // @Published publisher emits the current value on subscribe, so this
         // also applies the initial assignments at startup.
@@ -77,6 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sessionStore: sessionStore,
             onReloadSounds: { [weak self] in self?.soundEngine.reloadSounds() },
             onPreviewEvent: { [weak self] ev in self?.soundEngine.preview(ev) },
+            onPreviewProfile: { [weak self] profile in self?.soundEngine.previewProfile(profile) },
             onPreviewFile: { [weak self] name in self?.soundEngine.previewFile(name) },
             onShowWelcome: { [weak self] in self?.showOnboarding() },
             onShowWhatsNew: { [weak self] in self?.showWhatsNew() },

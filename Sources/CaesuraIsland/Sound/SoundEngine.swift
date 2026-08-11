@@ -122,13 +122,12 @@ final class SoundEngine {
     private var soundBuffers: [SoundEvent: AVAudioPCMBuffer] = [:]
     private var enabled = true
     private var volume: Float = 0.7
-    private var disabledEvents: Set<SoundEvent> = []
+    private var profile: SoundProfile = .quietGlass
+    private var eventVolumes: [String: Float] = [:]
     /// event.rawValue → "default" | "off" | "<library filename>".
     private var assignments: [String: String] = [:]
 
-    init() {
-        loadSounds()
-    }
+    init() {}
 
     func play(_ event: SessionEvent) {
         guard enabled else { return }
@@ -145,9 +144,10 @@ final class SoundEngine {
             }
         }()
 
-        guard let soundEvent, !disabledEvents.contains(soundEvent),
-              let buffer = soundBuffers[soundEvent] else { return }
-        playBuffer(buffer)
+        guard let soundEvent,
+              assignments[soundEvent.rawValue] != "off",
+              let buffer = buffer(for: soundEvent) else { return }
+        playBuffer(buffer, gain: eventVolume(for: soundEvent))
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -162,23 +162,45 @@ final class SoundEngine {
         playerNode?.volume = self.volume
     }
 
+    func setProfile(_ profile: SoundProfile) {
+        guard self.profile != profile else { return }
+        self.profile = profile
+        soundBuffers.removeAll()
+    }
+
+    func applyEventVolumes(_ map: [String: Float]) {
+        eventVolumes = map.mapValues { max(0, min(1, $0)) }
+    }
+
     /// Apply the per-event assignment map (Default / Off / a library file) and
     /// rebuild the buffers.
     func applyAssignments(_ map: [String: String]) {
         assignments = map
-        loadSounds()
+        soundBuffers.removeAll()
     }
 
     /// Play an event's currently-assigned sound regardless of enabled/off state
     /// (used by the ▶ preview buttons in Settings).
     func preview(_ event: SoundEvent) {
-        if let buffer = soundBuffers[event] { playBuffer(buffer) }
+        if let buffer = buffer(for: event) {
+            playBuffer(buffer, gain: eventVolume(for: event))
+        }
+    }
+
+    /// Preview the three semantic cues without changing event assignments.
+    func previewProfile(_ profile: SoundProfile) {
+        let synthesizer = SoundSynthesizer(profile: profile)
+        for event in [SoundEvent.completion, .approvalNeeded, .error] {
+            if let buffer = synthesizer.generateSound(for: event) {
+                playBuffer(buffer, gain: eventVolume(for: event))
+            }
+        }
     }
 
     /// Play a specific library file (preview a "My Sounds" entry).
     func previewFile(_ filename: String) {
         let url = customSoundsDirectory().appendingPathComponent(filename)
-        if let buffer = loadAudioFile(url) { playBuffer(buffer) }
+        if let buffer = loadAudioFile(url) { playBuffer(buffer, gain: 1) }
     }
 
     // MARK: - Audio Engine
@@ -223,12 +245,14 @@ final class SoundEngine {
         }
     }
 
-    private func playBuffer(_ buffer: AVAudioPCMBuffer) {
+    private func playBuffer(_ buffer: AVAudioPCMBuffer, gain: Float) {
+        guard gain > 0 else { return }
         guard let playback = ensureAudioEngineRunning() else { return }
         let player = playback.player
         let generation = playback.generation
+        let playbackBuffer = scaledBuffer(buffer, gain: gain)
 
-        player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+        player.scheduleBuffer(playbackBuffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor in
                 self?.playbackFinished(generation: generation)
             }
@@ -277,40 +301,60 @@ final class SoundEngine {
 
     // MARK: - Sound Loading
 
-    private func loadSounds() {
-        let synth = SoundSynthesizer()
+    private func buffer(for event: SoundEvent) -> AVAudioPCMBuffer? {
+        if let cached = soundBuffers[event] { return cached }
+
+        let synthesizer = SoundSynthesizer(profile: profile)
         let dir = customSoundsDirectory()
         let supportedExts = ["wav", "mp3", "m4a", "aiff", "caf"]
-        disabledEvents = []
 
-        for event in SoundEvent.allCases {
-            let choice = assignments[event.rawValue] ?? "default"
-            if choice == "off" { disabledEvents.insert(event) }
-
-            // 1. An explicitly-assigned library file.
-            if choice != "default", choice != "off" {
-                let url = dir.appendingPathComponent(choice)
-                if FileManager.default.fileExists(atPath: url.path), let b = loadAudioFile(url) {
-                    soundBuffers[event] = b
-                    continue
-                }
+        let choice = assignments[event.rawValue] ?? "default"
+        if choice != "default", choice != "off" {
+            let url = dir.appendingPathComponent(choice)
+            if FileManager.default.fileExists(atPath: url.path), let buffer = loadAudioFile(url) {
+                soundBuffers[event] = buffer
+                return buffer
             }
-            // 2. "default": a legacy file named after the event, else the synth.
-            var buffer: AVAudioPCMBuffer?
-            for ext in supportedExts {
-                let url = dir.appendingPathComponent("\(event.rawValue).\(ext)")
-                if FileManager.default.fileExists(atPath: url.path), let b = loadAudioFile(url) {
-                    buffer = b; break
-                }
-            }
-            soundBuffers[event] = buffer ?? synth.generateSound(for: event)
         }
+
+        for ext in supportedExts {
+            let url = dir.appendingPathComponent("\(event.rawValue).\(ext)")
+            if FileManager.default.fileExists(atPath: url.path), let buffer = loadAudioFile(url) {
+                soundBuffers[event] = buffer
+                return buffer
+            }
+        }
+
+        let generated = synthesizer.generateSound(for: event)
+        soundBuffers[event] = generated
+        return generated
     }
 
     /// Reload all sounds — call after the user drops new files in the sound-packs dir.
     func reloadSounds() {
         soundBuffers.removeAll()
-        loadSounds()
+    }
+
+    private func eventVolume(for event: SoundEvent) -> Float {
+        max(0, min(1, eventVolumes[event.rawValue] ?? 1))
+    }
+
+    private func scaledBuffer(_ buffer: AVAudioPCMBuffer, gain: Float) -> AVAudioPCMBuffer {
+        guard gain < 0.999,
+              let copy = AVAudioPCMBuffer(
+                pcmFormat: buffer.format,
+                frameCapacity: buffer.frameLength
+              ),
+              let sourceChannels = buffer.floatChannelData,
+              let destinationChannels = copy.floatChannelData else { return buffer }
+
+        copy.frameLength = buffer.frameLength
+        for channel in 0..<Int(buffer.format.channelCount) {
+            for frame in 0..<Int(buffer.frameLength) {
+                destinationChannels[channel][frame] = sourceChannels[channel][frame] * gain
+            }
+        }
+        return copy
     }
 
     private func customSoundsDirectory() -> URL {
