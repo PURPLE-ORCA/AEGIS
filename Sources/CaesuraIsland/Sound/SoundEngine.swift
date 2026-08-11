@@ -1,6 +1,82 @@
 import AVFoundation
 import Foundation
 
+enum AudioEngineLifecycleState: Equatable {
+    case stopped
+    case running(generation: Int)
+    case idleTeardownPending(generation: Int)
+}
+
+struct AudioEngineLifecyclePolicy {
+    struct PlaybackRequest: Equatable {
+        let generation: Int
+        let shouldStartEngine: Bool
+    }
+
+    private(set) var state: AudioEngineLifecycleState = .stopped
+    private(set) var pendingPlaybackCount = 0
+    private var generation = 0
+
+    mutating func requestPlayback() -> PlaybackRequest {
+        let shouldStartEngine: Bool
+
+        switch state {
+        case .stopped:
+            generation += 1
+            shouldStartEngine = true
+        case .running, .idleTeardownPending:
+            shouldStartEngine = false
+        }
+
+        pendingPlaybackCount += 1
+        state = .running(generation: generation)
+        return PlaybackRequest(generation: generation, shouldStartEngine: shouldStartEngine)
+    }
+
+    mutating func playbackFinished(generation completedGeneration: Int) -> Bool {
+        guard currentGeneration == completedGeneration, pendingPlaybackCount > 0 else { return false }
+
+        pendingPlaybackCount -= 1
+        guard pendingPlaybackCount == 0 else { return false }
+
+        state = .idleTeardownPending(generation: completedGeneration)
+        return true
+    }
+
+    mutating func idleDeadlineReached(generation completedGeneration: Int) -> Bool {
+        guard state == .idleTeardownPending(generation: completedGeneration) else { return false }
+        invalidateRunningGeneration()
+        return true
+    }
+
+    mutating func startFailed(generation failedGeneration: Int) {
+        guard currentGeneration == failedGeneration else { return }
+        invalidateRunningGeneration()
+    }
+
+    @discardableResult
+    mutating func stop() -> Bool {
+        guard state != .stopped else { return false }
+        invalidateRunningGeneration()
+        return true
+    }
+
+    private var currentGeneration: Int? {
+        switch state {
+        case .stopped:
+            return nil
+        case .running(let generation), .idleTeardownPending(let generation):
+            return generation
+        }
+    }
+
+    private mutating func invalidateRunningGeneration() {
+        generation += 1
+        pendingPlaybackCount = 0
+        state = .stopped
+    }
+}
+
 enum SoundEvent: String, CaseIterable {
     case sessionStart = "session-start"
     case sessionEnd = "session-end"
@@ -12,9 +88,14 @@ enum SoundEvent: String, CaseIterable {
     case approvalDenied = "approval-denied"
 }
 
+@MainActor
 final class SoundEngine {
+    private static let idleTeardownDelay: Duration = .seconds(2)
+
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
+    private var lifecycle = AudioEngineLifecyclePolicy()
+    private var idleTeardownTask: Task<Void, Never>?
     private var soundBuffers: [SoundEvent: AVAudioPCMBuffer] = [:]
     private var enabled = true
     private var volume: Float = 0.7
@@ -23,7 +104,6 @@ final class SoundEngine {
     private var assignments: [String: String] = [:]
 
     init() {
-        setupAudioEngine()
         loadSounds()
     }
 
@@ -49,6 +129,9 @@ final class SoundEngine {
 
     func setEnabled(_ enabled: Bool) {
         self.enabled = enabled
+        if !enabled {
+            stopAudioEngine()
+        }
     }
 
     func setVolume(_ volume: Float) {
@@ -77,11 +160,26 @@ final class SoundEngine {
 
     // MARK: - Audio Engine
 
-    private func setupAudioEngine() {
-        audioEngine = AVAudioEngine()
-        playerNode = AVAudioPlayerNode()
+    func shutdown() {
+        stopAudioEngine()
+    }
 
-        guard let engine = audioEngine, let player = playerNode else { return }
+    private func ensureAudioEngineRunning() -> (player: AVAudioPlayerNode, generation: Int)? {
+        idleTeardownTask?.cancel()
+        idleTeardownTask = nil
+
+        if audioEngine != nil, audioEngine?.isRunning != true {
+            lifecycle.stop()
+            teardownAudioGraph()
+        }
+
+        let request = lifecycle.requestPlayback()
+        if !request.shouldStartEngine, let playerNode {
+            return (playerNode, request.generation)
+        }
+
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
         engine.attach(player)
 
         let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
@@ -90,17 +188,68 @@ final class SoundEngine {
         do {
             try engine.start()
             player.volume = volume
+            audioEngine = engine
+            playerNode = player
+            return (player, request.generation)
         } catch {
+            engine.stop()
+            engine.detach(player)
+            lifecycle.startFailed(generation: request.generation)
             print("[CaesuraIsland] Audio engine failed to start: \(error)")
+            return nil
         }
     }
 
     private func playBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard let player = playerNode, audioEngine?.isRunning == true else { return }
-        player.scheduleBuffer(buffer, completionHandler: nil)
+        guard let playback = ensureAudioEngineRunning() else { return }
+        let player = playback.player
+        let generation = playback.generation
+
+        player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            Task { @MainActor in
+                self?.playbackFinished(generation: generation)
+            }
+        }
         if !player.isPlaying {
             player.play()
         }
+    }
+
+    private func playbackFinished(generation: Int) {
+        guard lifecycle.playbackFinished(generation: generation) else { return }
+
+        idleTeardownTask?.cancel()
+        idleTeardownTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.idleTeardownDelay)
+            guard !Task.isCancelled else { return }
+            self?.finishIdleTeardown(generation: generation)
+        }
+    }
+
+    private func finishIdleTeardown(generation: Int) {
+        guard lifecycle.idleDeadlineReached(generation: generation) else { return }
+        idleTeardownTask = nil
+        teardownAudioGraph()
+    }
+
+    private func stopAudioEngine() {
+        idleTeardownTask?.cancel()
+        idleTeardownTask = nil
+        lifecycle.stop()
+        teardownAudioGraph()
+    }
+
+    private func teardownAudioGraph() {
+        playerNode?.stop()
+        audioEngine?.stop()
+        audioEngine?.reset()
+
+        if let engine = audioEngine, let player = playerNode, engine.attachedNodes.contains(player) {
+            engine.detach(player)
+        }
+
+        playerNode = nil
+        audioEngine = nil
     }
 
     // MARK: - Sound Loading

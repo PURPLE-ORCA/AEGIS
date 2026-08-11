@@ -124,6 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         codexDesktopWatcher.stop()
         hermesDesktopWatcher.stop()
         socketServer.stop()
+        soundEngine.shutdown()
         cleanupPidFile()
         Log.shutdown()
     }
