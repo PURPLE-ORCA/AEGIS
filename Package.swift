@@ -22,11 +22,16 @@ let package = Package(
         ),
         .executableTarget(
             name: "CaesuraIslandBridge",
+            dependencies: ["CaesuraIslandBridgeSupport"],
             path: "Sources/CaesuraIslandBridge"
+        ),
+        .target(
+            name: "CaesuraIslandBridgeSupport",
+            path: "Sources/CaesuraIslandBridgeSupport"
         ),
         .testTarget(
             name: "CaesuraIslandTests",
-            dependencies: ["CaesuraIsland"],
+            dependencies: ["CaesuraIsland", "CaesuraIslandBridgeSupport"],
             path: "Tests/CaesuraIslandTests"
         ),
     ]

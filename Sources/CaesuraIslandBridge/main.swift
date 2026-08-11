@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CaesuraIslandBridgeSupport
 
 // MARK: - CAESURA-ISLAND Bridge
 // Reads hook JSON from a supported coding agent via stdin,
@@ -323,67 +324,6 @@ func codexTranscriptPath(sessionId: String?) -> String? {
     let suffix = "-\(sessionId).jsonl"
     for case let rel as String in en where rel.hasSuffix(suffix) {
         return (base as NSString).appendingPathComponent(rel)
-    }
-    return nil
-}
-
-/// Walk a Codex rollout transcript backwards to the last assistant message and
-/// return its text, stripping the <proposed_plan> wrapper Codex uses in plan mode.
-func codexAssistantFromTranscript(_ path: String) -> String? {
-    guard let data = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-    for line in data.components(separatedBy: "\n").reversed() {
-        guard !line.isEmpty,
-              let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-              json["type"] as? String == "response_item",
-              let p = json["payload"] as? [String: Any],
-              p["type"] as? String == "message",
-              p["role"] as? String == "assistant",
-              let content = p["content"] as? [[String: Any]] else { continue }
-        var text = ""
-        for c in content {
-            text += (c["text"] as? String) ?? (c["output_text"] as? String) ?? ""
-        }
-        text = text.replacingOccurrences(of: "<proposed_plan>", with: "")
-                   .replacingOccurrences(of: "</proposed_plan>", with: "")
-                   .trimmingCharacters(in: .whitespacesAndNewlines)
-        if !text.isEmpty { return String(text.prefix(4000)) }
-    }
-    return nil
-}
-
-// AntiGravity's hook payloads carry no prompt/reply text — only a transcript
-// path. Its transcript.jsonl uses {type, source, content} lines: USER_INPUT
-// (wrapped in <USER_REQUEST>…</USER_REQUEST>) for the prompt, PLANNER_RESPONSE
-// from MODEL with a `content` string for the assistant's reply.
-func agUserRequestFromTranscript(_ path: String) -> String? {
-    guard let data = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-    for line in data.components(separatedBy: "\n").reversed() {
-        guard !line.isEmpty,
-              let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-              json["type"] as? String == "USER_INPUT",
-              var content = json["content"] as? String else { continue }
-        // Strip the <USER_REQUEST>…</USER_REQUEST> wrapper and any trailing
-        // <ADDITIONAL_METADATA>… block AntiGravity appends.
-        if let r = content.range(of: "<USER_REQUEST>"),
-           let e = content.range(of: "</USER_REQUEST>") {
-            content = String(content[r.upperBound..<e.lowerBound])
-        }
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { return String(trimmed.prefix(500)) }
-    }
-    return nil
-}
-
-func agAssistantFromTranscript(_ path: String) -> String? {
-    guard let data = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-    for line in data.components(separatedBy: "\n").reversed() {
-        guard !line.isEmpty,
-              let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-              json["type"] as? String == "PLANNER_RESPONSE",
-              json["source"] as? String == "MODEL",
-              let content = json["content"] as? String else { continue }
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { return String(trimmed.prefix(500)) }
     }
     return nil
 }
