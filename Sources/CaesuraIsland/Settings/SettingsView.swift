@@ -44,7 +44,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .general:
             return "Launch behavior and notch expansion preferences."
         case .appearance:
-            return "Pick the visual theme for the notch windows."
+            return "Choose the notch theme and ambient companion."
         case .integrations:
             return "Manage hooks for the four supported agents."
         case .sound:
@@ -340,6 +340,56 @@ struct SettingsView: View {
             Text("Theme")
         } footer: {
             Text(settingsStore.notchThemeID.blurb)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+
+        Section {
+            Toggle(isOn: $settingsStore.companionEnabled) {
+                HStack(spacing: 12) {
+                    MysaCompanionPreview()
+                        .frame(width: 44, height: 48)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show Mysa")
+                        Text("A calm MSW sentinel for agent state and attention.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Scale")
+                    Text("Drag Mysa anywhere on your desktop.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Slider(value: $settingsStore.companionScale, in: 0.75...1.50, step: 0.05)
+                    .frame(width: 170)
+                Text("\(Int((settingsStore.companionScale * 100).rounded()))%")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .frame(width: 38, alignment: .trailing)
+            }
+            .disabled(!settingsStore.companionEnabled)
+
+            Toggle(isOn: $settingsStore.companionFollowsActiveWorkspace) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Follow active workspace")
+                    Text("Keep Mysa visible when you move between desktop spaces.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .disabled(!settingsStore.companionEnabled)
+        } header: {
+            Text("Ambient Companion")
+        } footer: {
+            Text("Mysa reflects idle, observing, working, attention, success, and failure. There are no levels, streaks, or reward loops.")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.leading)

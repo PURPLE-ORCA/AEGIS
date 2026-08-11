@@ -5,6 +5,7 @@ import Combine
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notchWindowController: NotchWindowController?
+    private var companionWindowController: CompanionWindowController?
     private var menuBarManager: MenuBarManager?
     private var onboardingController: OnboardingWindowController?
     private var whatsNewController: WhatsNewWindowController?
@@ -40,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] event in
                 self?.soundEngine.play(event)
                 self?.notchWindowController?.handleSessionEvent(event)
+                self?.companionWindowController?.handleSessionEvent(event)
             }
             .store(in: &cancellables)
 
@@ -70,6 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rateLimitStore: rateLimitStore
         )
         notchWindowController?.showWindow(nil)
+        companionWindowController = CompanionWindowController(
+            sessionStore: sessionStore,
+            settingsStore: settingsStore
+        )
         let screen = ScreenDetector.notchScreen
         Log.info("Notch window shown, frame: \(notchWindowController?.window?.frame ?? .zero)")
         Log.info("Screen frame: \(screen.frame)")

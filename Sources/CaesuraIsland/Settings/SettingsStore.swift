@@ -3,6 +3,23 @@ import Combine
 import ServiceManagement
 
 final class SettingsStore: ObservableObject {
+    @Published var companionEnabled: Bool {
+        didSet { UserDefaults.standard.set(companionEnabled, forKey: "companionEnabled") }
+    }
+    @Published var companionScale: Double {
+        didSet {
+            let clamped = min(max(companionScale, 0.75), 1.50)
+            UserDefaults.standard.set(clamped, forKey: "companionScale")
+        }
+    }
+    @Published var companionFollowsActiveWorkspace: Bool {
+        didSet {
+            UserDefaults.standard.set(
+                companionFollowsActiveWorkspace,
+                forKey: "companionFollowsActiveWorkspace"
+            )
+        }
+    }
     @Published var hermesVoiceHandoffEnabled: Bool {
         didSet { UserDefaults.standard.set(hermesVoiceHandoffEnabled, forKey: "hermesVoiceHandoffEnabled") }
     }
@@ -143,6 +160,9 @@ final class SettingsStore: ObservableObject {
 
         // Register defaults
         defaults.register(defaults: [
+            "companionEnabled": false,
+            "companionScale": 1.0,
+            "companionFollowsActiveWorkspace": true,
             "hermesVoiceHandoffEnabled": true,
             "hermesVoiceWorkingDirectory": preferredHermesDirectory,
             "hermesVoiceTarget": HermesHandoffTarget.newSession.rawValue,
@@ -162,6 +182,9 @@ final class SettingsStore: ObservableObject {
             "hasSeenThemeOnboarding": false,
         ])
 
+        self.companionEnabled = defaults.bool(forKey: "companionEnabled")
+        self.companionScale = min(max(defaults.double(forKey: "companionScale"), 0.75), 1.50)
+        self.companionFollowsActiveWorkspace = defaults.bool(forKey: "companionFollowsActiveWorkspace")
         self.hermesVoiceHandoffEnabled = defaults.bool(forKey: "hermesVoiceHandoffEnabled")
         self.hermesVoiceWorkingDirectory = defaults.string(forKey: "hermesVoiceWorkingDirectory")
             ?? preferredHermesDirectory
