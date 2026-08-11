@@ -1,0 +1,7 @@
+{
+  "id": "mysa",
+  "displayName": "Mysa",
+  "description": "A calm MSW sentinel that surfaces only meaningful agent state.",
+  "spriteVersionNumber": 2,
+  "spritesheetPath": "spritesheet.webp"
+}

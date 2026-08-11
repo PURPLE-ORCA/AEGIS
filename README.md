@@ -4,6 +4,8 @@ CAESURA-ISLAND is a personal macOS notch app for monitoring AI coding agents. It
 
 Codex Desktop and Hermes Desktop are monitored directly from their local session stores. Their desktop integrations do not require launching either provider from a terminal.
 
+Mysa is the optional MSW ambient companion. Its transparent desktop panel reflects only useful local state—idle, observing, working, attention, success, and failure—with no account, economy, streak, or reward loop. Animation stops while hidden, occluded, idle, in Low Power Mode, or when Reduce Motion is enabled.
+
 Supported agents:
 
 - Codex
