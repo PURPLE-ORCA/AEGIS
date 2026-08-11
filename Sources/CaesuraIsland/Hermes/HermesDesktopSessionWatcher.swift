@@ -1,6 +1,44 @@
 import Foundation
 import SQLite3
 
+struct HermesReconciliationSchedule: Equatable {
+    let afterNewRows: TimeInterval
+    let afterDatabaseOpened: TimeInterval
+    let whileIdle: TimeInterval
+    let whileDatabaseAbsent: TimeInterval
+
+    static let standard = HermesReconciliationSchedule(
+        afterNewRows: 10,
+        afterDatabaseOpened: 10,
+        whileIdle: 15,
+        whileDatabaseAbsent: 30
+    )
+}
+
+enum HermesReadOutcome: Equatable {
+    case newRows
+    case databaseOpened
+    case noChanges
+    case databaseUnavailable
+}
+
+struct HermesReconciliationPolicy {
+    let schedule: HermesReconciliationSchedule
+
+    func delay(after outcome: HermesReadOutcome) -> TimeInterval {
+        switch outcome {
+        case .newRows:
+            return schedule.afterNewRows
+        case .databaseOpened:
+            return schedule.afterDatabaseOpened
+        case .noChanges:
+            return schedule.whileIdle
+        case .databaseUnavailable:
+            return schedule.whileDatabaseAbsent
+        }
+    }
+}
+
 final class HermesDesktopSessionWatcher {
     var onMessage: ((BridgeMessage) -> Void)?
 
@@ -20,7 +58,7 @@ final class HermesDesktopSessionWatcher {
     private let root: URL
     private let databaseURL: URL
     private let automaticallyMonitorsChanges: Bool
-    private let reconciliationInterval: TimeInterval?
+    private let reconciliationPolicy: HermesReconciliationPolicy?
     private let queue = DispatchQueue(label: "dev.caesura.island.hermes-desktop", qos: .utility)
     private var monitor: FileEventMonitor?
     private var reconciliationTimer: DispatchSourceTimer?
@@ -31,30 +69,36 @@ final class HermesDesktopSessionWatcher {
     init(
         root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".hermes"),
         automaticallyMonitorsChanges: Bool = true,
-        reconciliationInterval: TimeInterval? = 1
+        reconciliationSchedule: HermesReconciliationSchedule? = .standard
     ) {
         self.root = root.resolvingSymlinksInPath().standardizedFileURL
         self.databaseURL = self.root.appendingPathComponent("state.db")
         self.automaticallyMonitorsChanges = automaticallyMonitorsChanges
-        self.reconciliationInterval = reconciliationInterval
+        self.reconciliationPolicy = reconciliationSchedule.map(HermesReconciliationPolicy.init)
     }
 
     func start(completion: (() -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self else { return }
-            self.openDatabaseAndRestoreActiveSessions()
+            let initialOutcome = self.openDatabaseAndRestoreActiveSessions()
             if self.automaticallyMonitorsChanges {
+                let databasePaths = Set([
+                    self.databaseURL.path,
+                    self.databaseURL.path + "-wal",
+                    self.databaseURL.path + "-shm",
+                ])
                 let monitor = FileEventMonitor(
                     root: self.root,
                     label: "dev.caesura.island.hermes-desktop.events",
-                    includeFile: { $0.lastPathComponent.hasPrefix("state.db") }
+                    includeEvent: { path, _ in databasePaths.contains(path) },
+                    includeFile: { _ in true }
                 ) { [weak self] _ in
                     self?.scheduleRefresh()
                 }
                 self.monitor = monitor
                 monitor.start()
             }
-            self.startReconciliationTimer()
+            self.scheduleSafetyCheck(after: initialOutcome)
             Log.info("Hermes Desktop watcher started at \(self.databaseURL.path), lastMessageId=\(self.lastMessageId)")
             completion?()
         }
@@ -75,7 +119,7 @@ final class HermesDesktopSessionWatcher {
 
     func reconcileNow() {
         queue.async { [weak self] in
-            self?.readNewMessages()
+            self?.readAndScheduleNextSafetyCheck()
         }
     }
 
@@ -83,31 +127,42 @@ final class HermesDesktopSessionWatcher {
         queue.async { [weak self] in
             guard let self else { return }
             self.refreshWorkItem?.cancel()
-            let work = DispatchWorkItem { [weak self] in self?.readNewMessages() }
+            self.scheduleSafetyCheck(after: .newRows)
+            let work = DispatchWorkItem { [weak self] in self?.readAndScheduleNextSafetyCheck() }
             self.refreshWorkItem = work
             self.queue.asyncAfter(deadline: .now() + 0.06, execute: work)
         }
     }
 
-    private func startReconciliationTimer() {
-        guard let reconciliationInterval, reconciliationInterval > 0 else { return }
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(
-            deadline: .now() + reconciliationInterval,
-            repeating: reconciliationInterval,
-            leeway: .milliseconds(150)
-        )
-        timer.setEventHandler { [weak self] in
-            self?.readNewMessages()
+    private func scheduleSafetyCheck(after outcome: HermesReadOutcome) {
+        guard let reconciliationPolicy else { return }
+        let delay = reconciliationPolicy.delay(after: outcome)
+        guard delay > 0 else { return }
+
+        if reconciliationTimer == nil {
+            let timer = DispatchSource.makeTimerSource(queue: queue)
+            timer.setEventHandler { [weak self] in
+                self?.readAndScheduleNextSafetyCheck()
+            }
+            reconciliationTimer = timer
+            timer.resume()
         }
-        reconciliationTimer = timer
-        timer.resume()
+
+        reconciliationTimer?.schedule(
+            deadline: .now() + delay,
+            leeway: .milliseconds(500)
+        )
     }
 
-    private func openDatabaseAndRestoreActiveSessions() {
-        guard openDatabase() else { return }
+    private func readAndScheduleNextSafetyCheck() {
+        scheduleSafetyCheck(after: readNewMessages())
+    }
+
+    private func openDatabaseAndRestoreActiveSessions() -> HermesReadOutcome {
+        guard openDatabase() else { return .databaseUnavailable }
         lastMessageId = maximumMessageId()
         restoreActiveSessions()
+        return .databaseOpened
     }
 
     private func openDatabase() -> Bool {
@@ -132,12 +187,11 @@ final class HermesDesktopSessionWatcher {
         return sqlite3_column_int64(statement, 0)
     }
 
-    private func readNewMessages() {
+    private func readNewMessages() -> HermesReadOutcome {
         if database == nil {
-            openDatabaseAndRestoreActiveSessions()
-            return
+            return openDatabaseAndRestoreActiveSessions()
         }
-        guard let database else { return }
+        guard let database else { return .databaseUnavailable }
         let sql = """
             SELECT m.id, m.session_id, m.role, m.content, m.tool_name,
                    m.tool_calls, m.finish_reason, s.cwd, s.model, s.title
@@ -148,7 +202,7 @@ final class HermesDesktopSessionWatcher {
             """
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return .noChanges }
         sqlite3_bind_int64(statement, 1, lastMessageId)
 
         var rows: [MessageRow] = []
@@ -171,6 +225,7 @@ final class HermesDesktopSessionWatcher {
             lastMessageId = max(lastMessageId, row.id)
             ingest(row)
         }
+        return rows.isEmpty ? .noChanges : .newRows
     }
 
     /// Reconstruct only unfinished desktop turns after an app relaunch. Hermes

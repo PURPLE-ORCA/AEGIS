@@ -27,7 +27,7 @@ final class HermesDesktopSessionWatcherTests: XCTestCase {
         let watcher = HermesDesktopSessionWatcher(
             root: root,
             automaticallyMonitorsChanges: false,
-            reconciliationInterval: nil
+            reconciliationSchedule: nil
         )
         let started = expectation(description: "watcher started")
         let restored = expectation(description: "active turn restored")
@@ -56,7 +56,7 @@ final class HermesDesktopSessionWatcherTests: XCTestCase {
         let watcher = HermesDesktopSessionWatcher(
             root: root,
             automaticallyMonitorsChanges: false,
-            reconciliationInterval: nil
+            reconciliationSchedule: nil
         )
         let started = expectation(description: "watcher started")
         let received = expectation(description: "append received")
@@ -70,6 +70,21 @@ final class HermesDesktopSessionWatcherTests: XCTestCase {
         try insertMessage(database, sessionId: "new-turn", role: "user", content: "fresh prompt")
         watcher.reconcileNow()
         wait(for: [received], timeout: 3)
+    }
+
+    func testAdaptiveReconciliationUsesSlowestCadenceWhenDatabaseIsAbsent() {
+        let schedule = HermesReconciliationSchedule(
+            afterNewRows: 2,
+            afterDatabaseOpened: 3,
+            whileIdle: 5,
+            whileDatabaseAbsent: 8
+        )
+        let policy = HermesReconciliationPolicy(schedule: schedule)
+
+        XCTAssertEqual(policy.delay(after: .newRows), 2)
+        XCTAssertEqual(policy.delay(after: .databaseOpened), 3)
+        XCTAssertEqual(policy.delay(after: .noChanges), 5)
+        XCTAssertEqual(policy.delay(after: .databaseUnavailable), 8)
     }
 
     private func makeDatabaseRoot() throws -> URL {

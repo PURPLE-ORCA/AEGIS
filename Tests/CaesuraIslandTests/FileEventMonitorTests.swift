@@ -61,12 +61,69 @@ final class FileEventMonitorTests: XCTestCase {
         wait(for: [received], timeout: 3)
     }
 
+    func testEarlyFilterRejectsUnrelatedFilesAndDirectories() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let monitor = makeHermesMonitor(root: root) { _ in }
+        let fileFlag = FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile)
+        let directoryFlag = FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir)
+
+        let paths = monitor.filteredPaths(for: [
+            FileSystemEvent(path: root.appendingPathComponent("history.json").path, flags: fileFlag),
+            FileSystemEvent(path: root.appendingPathComponent("cache", isDirectory: true).path, flags: directoryFlag),
+        ])
+
+        XCTAssertTrue(paths.isEmpty)
+    }
+
+    func testEarlyFilterAcceptsOnlyHermesDatabaseFiles() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let monitor = makeHermesMonitor(root: root) { _ in }
+        let fileFlag = FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile)
+        let expected = ["state.db", "state.db-wal", "state.db-shm"].map {
+            root.appendingPathComponent($0).path
+        }
+
+        let paths = monitor.filteredPaths(for: expected.map {
+            FileSystemEvent(path: $0, flags: fileFlag)
+        })
+
+        XCTAssertEqual(paths, expected.sorted())
+    }
+
+    func testRecoveryFlagsBypassEarlyFilter() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let monitor = makeHermesMonitor(root: root) { _ in }
+        let recoveryFlag = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs)
+
+        let paths = monitor.filteredPaths(for: [
+            FileSystemEvent(path: root.appendingPathComponent("unrelated").path, flags: recoveryFlag),
+        ])
+
+        XCTAssertEqual(paths, [root.path])
+    }
+
     private func makeMonitor(root: URL, onChange: @escaping ([String]) -> Void) -> FileEventMonitor {
         FileEventMonitor(
             root: root,
             label: "dev.caesura.island.tests.\(UUID().uuidString)",
             recursive: true,
             includeFile: { $0.pathExtension == "jsonl" },
+            onChange: onChange
+        )
+    }
+
+    private func makeHermesMonitor(root: URL, onChange: @escaping ([String]) -> Void) -> FileEventMonitor {
+        let databasePaths = Set(["state.db", "state.db-wal", "state.db-shm"].map {
+            root.appendingPathComponent($0).path
+        })
+        return FileEventMonitor(
+            root: root,
+            label: "dev.caesura.island.tests.hermes.\(UUID().uuidString)",
+            includeEvent: { path, _ in databasePaths.contains(path) },
+            includeFile: { _ in true },
             onChange: onChange
         )
     }

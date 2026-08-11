@@ -1,10 +1,16 @@
 import CoreServices
 import Foundation
 
+struct FileSystemEvent {
+    let path: String
+    let flags: FSEventStreamEventFlags
+}
+
 final class FileEventMonitor {
     private let root: URL
     private let queue: DispatchQueue
     private let recursive: Bool
+    private let includeEvent: ((String, FSEventStreamEventFlags) -> Bool)?
     private let includeFile: (URL) -> Bool
     private let onChange: ([String]) -> Void
     private let queueKey = DispatchSpecificKey<Void>()
@@ -17,12 +23,14 @@ final class FileEventMonitor {
         root: URL,
         label: String,
         recursive: Bool = false,
+        includeEvent: ((String, FSEventStreamEventFlags) -> Bool)? = nil,
         includeFile: @escaping (URL) -> Bool,
         onChange: @escaping ([String]) -> Void
     ) {
         self.root = root.standardizedFileURL
         self.queue = DispatchQueue(label: label, qos: .utility)
         self.recursive = recursive
+        self.includeEvent = includeEvent
         self.includeFile = includeFile
         self.onChange = onChange
         self.queue.setSpecific(key: queueKey, value: ())
@@ -98,12 +106,24 @@ final class FileEventMonitor {
         flags: UnsafePointer<FSEventStreamEventFlags>,
         count: Int
     ) {
+        let events = (0..<min(count, paths.count)).map {
+            FileSystemEvent(path: paths[$0], flags: flags[$0])
+        }
+        let changed = filteredPaths(for: events)
+
+        if !changed.isEmpty {
+            onChange(changed)
+        }
+        retargetToRootWhenAvailable()
+    }
+
+    func filteredPaths(for events: [FileSystemEvent]) -> [String] {
         let rootPath = root.path
         var changed = Set<String>()
 
-        for index in 0..<min(count, paths.count) {
-            let path = URL(fileURLWithPath: paths[index]).standardizedFileURL.path
-            let eventFlags = flags[index]
+        for event in events {
+            let path = URL(fileURLWithPath: event.path).standardizedFileURL.path
+            let eventFlags = event.flags
             let mustRescan = eventFlags & FSEventStreamEventFlags(
                 kFSEventStreamEventFlagMustScanSubDirs |
                     kFSEventStreamEventFlagUserDropped |
@@ -120,19 +140,30 @@ final class FileEventMonitor {
                 let relative = String(path.dropFirst(rootPath.count + 1))
                 guard !relative.contains("/") else { continue }
             }
+            if let includeEvent, !includeEvent(path, eventFlags) { continue }
+
+            if path == rootPath {
+                changed.insert(path)
+                continue
+            }
 
             let url = URL(fileURLWithPath: path)
-            let isDirectory = eventFlags & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir) != 0
-                || (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-            if path == rootPath || isDirectory || includeFile(url) {
+            if eventFlags & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir) != 0 {
+                changed.insert(path)
+                continue
+            }
+            if eventFlags & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile) != 0 {
+                if includeFile(url) { changed.insert(path) }
+                continue
+            }
+
+            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            if isDirectory || includeFile(url) {
                 changed.insert(path)
             }
         }
 
-        if !changed.isEmpty {
-            onChange(changed.sorted())
-        }
-        retargetToRootWhenAvailable()
+        return changed.sorted()
     }
 
     private func retargetToRootWhenAvailable() {
