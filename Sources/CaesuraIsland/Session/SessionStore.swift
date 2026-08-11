@@ -20,6 +20,12 @@ final class SessionStore: ObservableObject {
 
     let onEvent = PassthroughSubject<SessionEvent, Never>()
 
+    private enum PostCommitEffect {
+        case event(SessionEvent)
+        case action(() -> Void)
+        case scheduleRemoval(sessionId: String, delay: TimeInterval)
+    }
+
     /// Polls every 5s to check whether the AI agent process is still alive.
     /// Cleaner than time-based cleanup because long idle sessions stay open
     /// while genuinely-exited sessions get removed quickly.
@@ -155,37 +161,6 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    private func ensureSession(_ message: BridgeMessage) {
-        let sessionId = message.sessionId
-        if sessions[sessionId] == nil {
-            let cwd = message.cwd ?? "~"
-            var s = Session(
-                id: sessionId,
-                cwd: cwd,
-                startedAt: Date(),
-                status: .idle,
-                terminalInfo: message.terminalInfo,
-                source: message.source ?? "codex"
-            )
-            s.cwdIsPlaceholder = (message.cwd == nil)
-            s.announced = true
-            sessions[sessionId] = s
-            onEvent.send(.sessionStarted(sessionId))
-        } else if let cwd = message.cwd, !cwd.isEmpty,
-                  sessions[sessionId]?.cwdIsPlaceholder == true {
-            // First real cwd arrives after a placeholder create (issue #38).
-            sessions[sessionId]?.cwd = cwd
-            sessions[sessionId]?.cwdIsPlaceholder = false
-        }
-        // Update terminal info / source if newer info arrives
-        if let info = message.terminalInfo {
-            sessions[sessionId]?.terminalInfo = info
-        }
-        if let src = message.source {
-            sessions[sessionId]?.source = src
-        }
-    }
-
     /// The canonical events the store understands. Every provider bridge
     /// normalizes its native vocabulary to one of these before sending; a
     /// a message arriving with a raw, un-normalized name bypassed our
@@ -203,42 +178,79 @@ final class SessionStore: ObservableObject {
             Log.info("Ignoring non-canonical event '\(message.hookEvent)' from source=\(message.source ?? "?") session=\(sessionId.prefix(8))")
             return
         }
-        ensureSession(message)
+
+        if message.hookEvent == "Stop",
+           let assistantMessage = message.assistantMessage,
+           Self.isSuggestionsBlob(assistantMessage),
+           sessions[sessionId]?.status == .idle {
+            return
+        }
+
+        let now = Date()
+        var effects: [PostCommitEffect] = []
+        var session: Session
+        if let existing = sessions[sessionId] {
+            session = existing
+            if let cwd = message.cwd, !cwd.isEmpty, session.cwdIsPlaceholder {
+                session.cwd = cwd
+                session.cwdIsPlaceholder = false
+            }
+        } else {
+            session = Session(
+                id: sessionId,
+                cwd: message.cwd ?? "~",
+                startedAt: now,
+                status: .idle,
+                terminalInfo: message.terminalInfo,
+                source: message.source ?? "codex"
+            )
+            session.cwdIsPlaceholder = message.cwd == nil
+            session.announced = true
+            effects.append(.event(.sessionStarted(sessionId)))
+        }
+
+        if let terminalInfo = message.terminalInfo {
+            session.terminalInfo = terminalInfo
+        }
+        if let source = message.source {
+            session.source = source
+        }
+
         // A late buffered hook may arrive after we've marked a session
         // .completed and scheduled removal. Cancel the pending removal so
         // the brand-new session (for example, Codex thread reuse) isn't
         // deleted out from under us, and reset .completed back to .idle so
         // the per-event switch below can transition normally (issue #10).
-        if sessions[sessionId]?.status == .completed {
+        if session.status == .completed {
             cancelPendingRemoval(sessionId: sessionId)
-            sessions[sessionId]?.status = .idle
+            session.status = .idle
         }
         // Stamp activity time on every event so the collapsed notch tracks
         // whatever provider is most recently doing something.
-        sessions[sessionId]?.lastActivityAt = Date()
-        let statusBefore = sessions[sessionId]?.status
+        session.lastActivityAt = now
+        let statusBefore = session.status
 
         // Always update effort level if present (it's on most hooks)
         if let effort = message.effortLevel {
-            sessions[sessionId]?.effortLevel = effort
+            session.effortLevel = effort
         }
         // Stamp the model whenever the hook carries one.
         if let m = message.model, !m.isEmpty {
-            sessions[sessionId]?.model = m
+            session.model = m
         }
         // Always update session title if present
         if let title = message.sessionTitle, !title.isEmpty {
-            sessions[sessionId]?.sessionTitle = title
+            session.sessionTitle = title
         }
         // Capture the agent PID — used to detect when the agent exits.
         // Also stamp its start time so PID reuse can be detected later
         // (issue #29).
         if let pid = message.agentPid, pid > 0 {
-            if sessions[sessionId]?.agentPid != pid {
-                sessions[sessionId]?.agentPid = pid
+            if session.agentPid != pid {
+                session.agentPid = pid
                 if let start = Self.processStartTime(pid: pid_t(pid)) {
-                    sessions[sessionId]?.agentStartSec = Int(start.tv_sec)
-                    sessions[sessionId]?.agentStartUsec = Int(start.tv_usec)
+                    session.agentStartSec = Int(start.tv_sec)
+                    session.agentStartUsec = Int(start.tv_usec)
                 }
             }
         }
@@ -251,57 +263,56 @@ final class SessionStore: ObservableObject {
         // the fd and leaves the bridge in read() for 300s (issue #2).
         let isProgressEvent = ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"].contains(message.hookEvent)
         if isProgressEvent {
-            let droppedPermission = sessions[sessionId]?.pendingPermission
-            let droppedQuestion = sessions[sessionId]?.pendingQuestion
+            let droppedPermission = session.pendingPermission
+            let droppedQuestion = session.pendingQuestion
             if droppedPermission != nil || droppedQuestion != nil {
-                sessions[sessionId]?.pendingPermission = nil
-                sessions[sessionId]?.pendingQuestion = nil
-                // Allow-once for orphaned permissions — the user already
-                // answered in the terminal, so we're just acking the protocol.
-                droppedPermission?.respond(.allowOnce)
-                // For orphaned questions, defer to the provider terminal so it knows
-                // to fall through to its native prompt. (No-op for Codex
-                // where respond is just a TerminalJumper hook.)
-                if let q = droppedQuestion, let data = BridgeResponse.deferToTerminal() {
-                    q.respond(data)
-                }
-                Log.info("Pending resolved externally for session=\(sessionId.prefix(8)) (event=\(message.hookEvent))")
-                onEvent.send(.pendingDismissedExternally(sessionId))
+                session.pendingPermission = nil
+                session.pendingQuestion = nil
+                effects.append(.action {
+                    droppedPermission?.respond(.allowOnce)
+                    if let droppedQuestion, let data = BridgeResponse.deferToTerminal() {
+                        droppedQuestion.respond(data)
+                    }
+                    Log.info("Pending resolved externally for session=\(sessionId.prefix(8)) (event=\(message.hookEvent))")
+                })
+                effects.append(.event(.pendingDismissedExternally(sessionId)))
             }
         }
 
         switch message.hookEvent {
         case "SessionStart":
-            sessions[sessionId]?.status = .idle
+            session.status = .idle
             // ensureSession already emitted .sessionStarted for first-time
             // creates. Suppress the redundant SessionStart-hook emit so
             // subscribers (sounds, metrics) see exactly one start per id
             // (issue #37).
-            if sessions[sessionId]?.announced == false {
-                sessions[sessionId]?.announced = true
-                onEvent.send(.sessionStarted(sessionId))
+            if !session.announced {
+                session.announced = true
+                effects.append(.event(.sessionStarted(sessionId)))
             }
 
         case "SessionEnd":
-            markCompletedAndScheduleRemoval(sessionId: sessionId, after: 5.0)
+            session.status = .completed
+            effects.append(.event(.sessionEnded(sessionId)))
+            effects.append(.scheduleRemoval(sessionId: sessionId, delay: 5.0))
 
         case "UserPromptSubmit":
             let userMsg = message.userMessage ?? message.toolInput
             if let msg = userMsg {
-                sessions[sessionId]?.lastUserMessage = msg
-                if sessions[sessionId]?.firstPrompt == nil {
-                    sessions[sessionId]?.firstPrompt = msg
+                session.lastUserMessage = msg
+                if session.firstPrompt == nil {
+                    session.firstPrompt = msg
                 }
             }
-            sessions[sessionId]?.status = .thinking
-            sessions[sessionId]?.currentTool = nil
-            onEvent.send(.statusChanged(sessionId, .thinking))
+            session.status = .thinking
+            session.currentTool = nil
+            effects.append(.event(.statusChanged(sessionId, .thinking)))
 
         case "PreToolUse":
             let toolName = message.toolName ?? "unknown"
-            sessions[sessionId]?.status = .toolUse
-            sessions[sessionId]?.currentTool = toolName
-            onEvent.send(.toolStarted(sessionId, toolName))
+            session.status = .toolUse
+            session.currentTool = toolName
+            effects.append(.event(.toolStarted(sessionId, toolName)))
 
             // Codex's `request_user_input` and Hermes' `clarify` are their
             // AskUserQuestion equivalents — they fire through PreToolUse, not
@@ -316,8 +327,8 @@ final class SessionStore: ObservableObject {
             if isMirroredQuestion,
                let desc = message.toolInput,
                let parsedQuestions = Self.parseQuestion(desc) {
-                sessions[sessionId]?.status = .waitingPermission
-                sessions[sessionId]?.pendingQuestion = PendingQuestion(
+                session.status = .waitingPermission
+                session.pendingQuestion = PendingQuestion(
                     questions: parsedQuestions,
                     respond: { [weak self] _ in
                         // Can't answer via hook — surface Codex.app so the
@@ -328,16 +339,16 @@ final class SessionStore: ObservableObject {
                         }
                     }
                 )
-                onEvent.send(.questionAsked(sessionId))
+                effects.append(.event(.questionAsked(sessionId)))
             }
 
         case "PostToolUse":
             let toolName = message.toolName ?? "unknown"
-            sessions[sessionId]?.status = .thinking
-            sessions[sessionId]?.currentTool = nil
-            sessions[sessionId]?.lastToolDurationMs = message.durationMs
+            session.status = .thinking
+            session.currentTool = nil
+            session.lastToolDurationMs = message.durationMs
             // Don't update lastAssistantMessage from tool output
-            onEvent.send(.toolEnded(sessionId, toolName))
+            effects.append(.event(.toolEnded(sessionId, toolName)))
 
         case "PermissionRequest":
             let toolName = message.toolName ?? "unknown"
@@ -347,8 +358,8 @@ final class SessionStore: ObservableObject {
             if toolName == "AskUserQuestion",
                let desc = description,
                let parsedQuestions = Self.parseQuestion(desc) {
-                sessions[sessionId]?.status = .waitingPermission
-                sessions[sessionId]?.pendingQuestion = PendingQuestion(
+                session.status = .waitingPermission
+                session.pendingQuestion = PendingQuestion(
                     questions: parsedQuestions,
                     respond: { rawData in
                         Log.info("Question answered for session=\(sessionId.prefix(8))")
@@ -356,10 +367,10 @@ final class SessionStore: ObservableObject {
                         respondRaw?(rawData)
                     }
                 )
-                onEvent.send(.questionAsked(sessionId))
+                effects.append(.event(.questionAsked(sessionId)))
             } else {
-                sessions[sessionId]?.status = .waitingPermission
-                sessions[sessionId]?.pendingPermission = PendingPermission(
+                session.status = .waitingPermission
+                session.pendingPermission = PendingPermission(
                     toolName: toolName,
                     description: description,
                     filePath: message.toolFilePath,
@@ -408,7 +419,7 @@ final class SessionStore: ObservableObject {
                         }
                     }
                 )
-                onEvent.send(.permissionRequested(sessionId))
+                effects.append(.event(.permissionRequested(sessionId)))
             }
 
         case "Stop":
@@ -418,29 +429,28 @@ final class SessionStore: ObservableObject {
             // finished (the real reply's Stop already fired), drop it entirely so
             // it doesn't pop a duplicate Finished card.
             if let msg = message.assistantMessage, Self.isSuggestionsBlob(msg) {
-                if sessions[sessionId]?.status == .idle { return }
                 // otherwise complete the turn but keep the prior reply (if any)
             } else if let msg = message.assistantMessage {
-                sessions[sessionId]?.lastAssistantMessage = msg
+                session.lastAssistantMessage = msg
             }
-            sessions[sessionId]?.status = .idle
-            sessions[sessionId]?.currentTool = nil
-            onEvent.send(.statusChanged(sessionId, .idle))
+            session.status = .idle
+            session.currentTool = nil
+            effects.append(.event(.statusChanged(sessionId, .idle)))
 
         case "Notification":
             if let msg = message.assistantMessage {
-                sessions[sessionId]?.lastAssistantMessage = msg
+                session.lastAssistantMessage = msg
             }
             let text = message.notification ?? ""
-            onEvent.send(.notification(sessionId, text))
+            effects.append(.event(.notification(sessionId, text)))
 
         case "SubagentStart":
-            sessions[sessionId]?.currentTool = "Agent"
-            onEvent.send(.toolStarted(sessionId, "Agent"))
+            session.currentTool = "Agent"
+            effects.append(.event(.toolStarted(sessionId, "Agent")))
 
         case "SubagentStop":
-            sessions[sessionId]?.currentTool = nil
-            onEvent.send(.toolEnded(sessionId, "Agent"))
+            session.currentTool = nil
+            effects.append(.event(.toolEnded(sessionId, "Agent")))
 
         case "PreCompact":
             break
@@ -452,13 +462,24 @@ final class SessionStore: ObservableObject {
         // Maintain the live "active timer" used by the session card. Starts when
         // we first enter an active state from idle; carries through across
         // thinking ↔ toolUse transitions; resets when we go back to idle.
-        if let after = sessions[sessionId]?.status {
-            let wasActive = statusBefore == .thinking || statusBefore == .toolUse
-            let isActive = after == .thinking || after == .toolUse
-            if isActive && !wasActive {
-                sessions[sessionId]?.activeStartedAt = Date()
-            } else if !isActive {
-                sessions[sessionId]?.activeStartedAt = nil
+        let wasActive = statusBefore == .thinking || statusBefore == .toolUse
+        let isActive = session.status == .thinking || session.status == .toolUse
+        if isActive && !wasActive {
+            session.activeStartedAt = now
+        } else if !isActive {
+            session.activeStartedAt = nil
+        }
+
+        sessions[sessionId] = session
+
+        for effect in effects {
+            switch effect {
+            case .event(let event):
+                onEvent.send(event)
+            case .action(let action):
+                action()
+            case .scheduleRemoval(let sessionId, let delay):
+                scheduleRemoval(sessionId: sessionId, after: delay)
             }
         }
     }
