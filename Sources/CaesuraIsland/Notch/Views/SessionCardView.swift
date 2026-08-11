@@ -16,8 +16,12 @@ struct SessionCardView: View {
         session.status == .thinking || session.status == .toolUse
     }
 
-    private var morphAnimation: Animation {
-        reduceMotion ? NotchMotion.reducedSessionCard : NotchMotion.sessionCard
+    private func morphAnimation(expanding: Bool) -> Animation {
+        if reduceMotion {
+            return NotchMotion.reducedSessionCard
+        }
+
+        return expanding ? NotchMotion.sessionCard : NotchMotion.sessionCardCollapse
     }
 
     private var statusAccent: Color {
@@ -48,31 +52,30 @@ struct SessionCardView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            compactMessage
+        Button {
+            TerminalJumper.jump(to: session)
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                compactMessage
 
-            if showsDetails {
-                detailContent
-                    .transition(.opacity)
+                if showsDetails {
+                    detailContent
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(.asymmetric(insertion: .opacity, removal: .identity))
+                        .allowsHitTesting(false)
+                }
             }
+            .clipped()
+            .notchCard(theme, tint: cardTint, active: isActive, ink: cardInk)
+            .contentShape(RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous))
         }
-        .clipped()
-        .notchCard(theme, tint: cardTint, active: isActive, ink: cardInk)
-        .contentShape(RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous))
-        .overlay {
-            Button {
-                TerminalJumper.jump(to: session)
-            } label: {
-                Color.clear
-                    .contentShape(RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open \(session.provider.displayName) session \(session.displayName)")
-            .accessibilityValue(SessionCardPresentation.preview(for: session))
-            .accessibilityHint("Opens this session in its app or terminal when activated.")
-        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityLabel("Open \(session.provider.displayName) session \(session.displayName)")
+        .accessibilityValue(SessionCardPresentation.preview(for: session))
+        .accessibilityHint("Opens this session in its app or terminal when activated.")
         .onHover { hovering in
-            withAnimation(morphAnimation) {
+            withAnimation(morphAnimation(expanding: hovering)) {
                 isHovering = hovering
             }
         }

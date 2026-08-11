@@ -15,8 +15,8 @@ The first pass animated the same height change twice. SwiftUI interpolated the c
 ## Implementation
 
 1. Keep the compact mascot and message row mounted for the entire interaction.
-2. Insert only the secondary detail content below it, using opacity plus the parent card's clipped intrinsic-height animation.
-3. Use a 200ms strong ease-out curve for the hover accordion and a gentler 120ms reduced-motion variant.
+2. Insert details with an asymmetric transition: fade them in, then remove them immediately on collapse so layout space cannot linger.
+3. Use a 200ms strong ease-out curve for expansion, a snappier 160ms strong ease-out for collapse, and a gentler 120ms reduced-motion variant.
 4. Let the AppKit panel follow SwiftUI's already-interpolated measured height directly instead of starting another animation.
 5. Preserve the existing 320ms display-link animation for full notch state changes.
 
@@ -40,3 +40,4 @@ Do not change click-to-open behavior, status colors, mascot artwork, provider se
 - `swift test`: 39 passed.
 - Release bundle build and strict codesign verification passed.
 - Native runtime QA confirmed the compact resting state in the workspace-built app.
+- Follow-up closing fix removes the outgoing opacity transition without feeding measured geometry back into SwiftUI state; this keeps collapse immediate and avoids constraint-cycle crashes during live session removal.

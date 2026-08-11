@@ -87,7 +87,8 @@ enum TerminalJumper {
     }
 
     private static func jumpHermesDesktop(session: Session) {
-        activateApp(bundleId: "com.nousresearch.hermes")
+        let bundleId = "com.nousresearch.hermes"
+        activateApp(bundleId: bundleId)
 
         let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         guard AXIsProcessTrustedWithOptions([promptKey: true] as CFDictionary) else {
@@ -102,38 +103,52 @@ enum TerminalJumper {
 
         let escapedTitle = escapeAppleScriptString(String(title.prefix(160)))
         Log.info("TerminalJumper: focusing Hermes Desktop session=\(session.id.prefix(8))")
-        runAppleScript("""
-        tell application "System Events"
-            tell process "Hermes"
-                set frontmost to true
-                repeat with appWindow in windows
-                    try
-                        set allElements to entire contents of appWindow
-                        repeat with candidate in allElements
-                            try
-                                set candidateRole to role of candidate as text
-                                set candidateName to name of candidate as text
-                                if candidateName is not "" and (candidateRole is "AXRadioButton" or candidateRole is "AXTab") then
-                                    if candidateName contains "\(escapedTitle)" or "\(escapedTitle)" contains candidateName then
-                                        perform action "AXPress" of candidate
-                                        perform action "AXRaise" of appWindow
-                                        return
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            runAppleScript("""
+            tell application "System Events"
+                tell process "Hermes"
+                    set frontmost to true
+                    repeat with appWindow in windows
+                        try
+                            set allElements to entire contents of appWindow
+                            repeat with candidate in allElements
+                                try
+                                    set candidateName to name of candidate as text
+                                    if candidateName is not "" then
+                                        if candidateName contains "\(escapedTitle)" or "\(escapedTitle)" contains candidateName then
+                                            set actionNames to name of actions of candidate
+                                            if actionNames contains "AXPress" then
+                                                perform action "AXPress" of candidate
+                                                perform action "AXRaise" of appWindow
+                                                return
+                                            end if
+                                        end if
                                     end if
-                                end if
-                            end try
-                        end repeat
-                    end try
-                end repeat
+                                end try
+                            end repeat
+                        end try
+                    end repeat
+                end tell
             end tell
-        end tell
-        """)
+            """)
+        }
     }
 
     // MARK: - App Activation
 
     private static func activateApp(bundleId: String) {
         if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first {
-            app.activate(options: [.activateAllWindows])
+            let activated = app.activate(options: [.activateAllWindows])
+            Log.info("TerminalJumper: activated \(bundleId)=\(activated)")
+        } else if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+            NSWorkspace.shared.openApplication(
+                at: appURL,
+                configuration: NSWorkspace.OpenConfiguration()
+            ) { _, error in
+                if let error {
+                    Log.error("TerminalJumper: failed to open \(bundleId): \(error.localizedDescription)")
+                }
+            }
         }
     }
 
