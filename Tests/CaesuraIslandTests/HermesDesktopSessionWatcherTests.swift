@@ -72,6 +72,135 @@ final class HermesDesktopSessionWatcherTests: XCTestCase {
         wait(for: [received], timeout: 3)
     }
 
+    func testDoesNotRestoreStaleUnfinishedTurnAtStartup() throws {
+        let root = try makeDatabaseRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let database = try openDatabase(at: root)
+        defer { sqlite3_close(database) }
+        let now = Date(timeIntervalSince1970: 10_000)
+
+        try insertSession(database, id: "stale", title: "Abandoned turn", lastActivityAt: 9_000)
+        try insertMessage(
+            database,
+            sessionId: "stale",
+            role: "user",
+            content: "This turn never completed",
+            timestamp: 9_000
+        )
+
+        let watcher = HermesDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil,
+            staleTurnInterval: 300,
+            now: { now }
+        )
+        let started = expectation(description: "watcher started")
+        let unexpectedMessage = expectation(description: "stale turn was restored")
+        unexpectedMessage.isInverted = true
+        watcher.onMessage = { _ in unexpectedMessage.fulfill() }
+        watcher.start { started.fulfill() }
+        defer { watcher.stop() }
+
+        wait(for: [started, unexpectedMessage], timeout: 0.2)
+    }
+
+    func testReconciliationEndsTurnWhenHermesActivityBecomesStale() throws {
+        let root = try makeDatabaseRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let database = try openDatabase(at: root)
+        defer { sqlite3_close(database) }
+        var now = Date(timeIntervalSince1970: 10_000)
+
+        try insertSession(database, id: "active", title: "Active turn", lastActivityAt: 9_900)
+        try insertMessage(database, sessionId: "active", role: "user", content: "Keep going", timestamp: 9_900)
+
+        let watcher = HermesDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil,
+            staleTurnInterval: 300,
+            now: { now }
+        )
+        let started = expectation(description: "watcher started")
+        let restored = expectation(description: "fresh turn restored")
+        let ended = expectation(description: "stale turn ended")
+        watcher.onMessage = { message in
+            if message.hookEvent == "UserPromptSubmit" { restored.fulfill() }
+            if message.hookEvent == "SessionEnd" { ended.fulfill() }
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started, restored], timeout: 3)
+        defer { watcher.stop() }
+
+        now = Date(timeIntervalSince1970: 10_301)
+        watcher.reconcileNow()
+        wait(for: [ended], timeout: 3)
+    }
+
+    func testFreshHeartbeatRevivesPreviouslyStaleTurnWithoutNewMessage() throws {
+        let root = try makeDatabaseRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let database = try openDatabase(at: root)
+        defer { sqlite3_close(database) }
+        let now = Date(timeIntervalSince1970: 10_000)
+
+        try insertSession(database, id: "revived", title: "Revived turn", lastActivityAt: 9_000)
+        try insertMessage(database, sessionId: "revived", role: "user", content: "Resume me", timestamp: 9_000)
+
+        let watcher = HermesDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil,
+            staleTurnInterval: 300,
+            now: { now }
+        )
+        let started = expectation(description: "watcher started")
+        let revived = expectation(description: "turn revived")
+        watcher.onMessage = { message in
+            if message.sessionId == "revived", message.hookEvent == "UserPromptSubmit" {
+                revived.fulfill()
+            }
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started], timeout: 3)
+        defer { watcher.stop() }
+
+        try updateSessionActivity(database, id: "revived", timestamp: 9_900)
+        watcher.reconcileNow()
+        wait(for: [revived], timeout: 3)
+    }
+
+    func testReconciliationObservesSessionEndWithoutNewMessage() throws {
+        let root = try makeDatabaseRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let database = try openDatabase(at: root)
+        defer { sqlite3_close(database) }
+
+        try insertSession(database, id: "closed", title: "Closed turn")
+        try insertMessage(database, sessionId: "closed", role: "user", content: "Close me")
+
+        let watcher = HermesDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil
+        )
+        let started = expectation(description: "watcher started")
+        let restored = expectation(description: "turn restored")
+        let ended = expectation(description: "session end observed")
+        watcher.onMessage = { message in
+            if message.hookEvent == "UserPromptSubmit" { restored.fulfill() }
+            if message.hookEvent == "SessionEnd" { ended.fulfill() }
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started, restored], timeout: 3)
+        defer { watcher.stop() }
+
+        try endSession(database, id: "closed")
+        watcher.reconcileNow()
+        wait(for: [ended], timeout: 3)
+    }
+
     func testAdaptiveReconciliationUsesSlowestCadenceWhenDatabaseIsAbsent() {
         let schedule = HermesReconciliationSchedule(
             afterNewRows: 2,
@@ -106,6 +235,7 @@ final class HermesDesktopSessionWatcherTests: XCTestCase {
                 source TEXT NOT NULL,
                 model TEXT,
                 ended_at REAL,
+                last_activity_at REAL,
                 title TEXT,
                 cwd TEXT
             )
@@ -118,16 +248,22 @@ final class HermesDesktopSessionWatcherTests: XCTestCase {
                 content TEXT,
                 tool_calls TEXT,
                 tool_name TEXT,
-                finish_reason TEXT
+                finish_reason TEXT,
+                timestamp REAL NOT NULL
             )
             """)
         return database
     }
 
-    private func insertSession(_ database: OpaquePointer, id: String, title: String) throws {
+    private func insertSession(
+        _ database: OpaquePointer,
+        id: String,
+        title: String,
+        lastActivityAt: TimeInterval = Date().timeIntervalSince1970
+    ) throws {
         try execute(
             database,
-            "INSERT INTO sessions (id, source, title, cwd) VALUES (?, 'desktop', ?, '/tmp/project')",
+            "INSERT INTO sessions (id, source, title, cwd, last_activity_at) VALUES (?, 'desktop', ?, '/tmp/project', \(lastActivityAt))",
             bindings: [id, title]
         )
     }
@@ -138,12 +274,29 @@ final class HermesDesktopSessionWatcherTests: XCTestCase {
         role: String,
         content: String? = nil,
         toolCalls: String? = nil,
-        finishReason: String? = nil
+        finishReason: String? = nil,
+        timestamp: TimeInterval = Date().timeIntervalSince1970
     ) throws {
         try execute(
             database,
-            "INSERT INTO messages (session_id, role, content, tool_calls, finish_reason) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO messages (session_id, role, content, tool_calls, finish_reason, timestamp) VALUES (?, ?, ?, ?, ?, \(timestamp))",
             bindings: [sessionId, role, content, toolCalls, finishReason]
+        )
+    }
+
+    private func updateSessionActivity(_ database: OpaquePointer, id: String, timestamp: TimeInterval) throws {
+        try execute(
+            database,
+            "UPDATE sessions SET last_activity_at = \(timestamp) WHERE id = ?",
+            bindings: [id]
+        )
+    }
+
+    private func endSession(_ database: OpaquePointer, id: String) throws {
+        try execute(
+            database,
+            "UPDATE sessions SET ended_at = last_activity_at + 1 WHERE id = ?",
+            bindings: [id]
         )
     }
 

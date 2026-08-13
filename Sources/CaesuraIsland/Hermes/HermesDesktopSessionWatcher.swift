@@ -42,6 +42,16 @@ struct HermesReconciliationPolicy {
 final class HermesDesktopSessionWatcher {
     var onMessage: ((BridgeMessage) -> Void)?
 
+    private struct ActiveTurnSnapshot {
+        let sessionId: String
+        let latestMessageAt: TimeInterval?
+        let lastActivityAt: TimeInterval?
+
+        var activityAt: TimeInterval? {
+            [latestMessageAt, lastActivityAt].compactMap { $0 }.max()
+        }
+    }
+
     private struct MessageRow {
         let id: Int64
         let sessionId: String
@@ -59,22 +69,29 @@ final class HermesDesktopSessionWatcher {
     private let databaseURL: URL
     private let automaticallyMonitorsChanges: Bool
     private let reconciliationPolicy: HermesReconciliationPolicy?
+    private let staleTurnInterval: TimeInterval
+    private let now: () -> Date
     private let queue = DispatchQueue(label: "dev.caesura.island.hermes-desktop", qos: .utility)
     private var monitor: FileEventMonitor?
     private var reconciliationTimer: DispatchSourceTimer?
     private var database: OpaquePointer?
     private var lastMessageId: Int64 = 0
     private var refreshWorkItem: DispatchWorkItem?
+    private var presentedActiveSessionIds = Set<String>()
 
     init(
         root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".hermes"),
         automaticallyMonitorsChanges: Bool = true,
-        reconciliationSchedule: HermesReconciliationSchedule? = .standard
+        reconciliationSchedule: HermesReconciliationSchedule? = .standard,
+        staleTurnInterval: TimeInterval = 5 * 60,
+        now: @escaping () -> Date = Date.init
     ) {
         self.root = root.resolvingSymlinksInPath().standardizedFileURL
         self.databaseURL = self.root.appendingPathComponent("state.db")
         self.automaticallyMonitorsChanges = automaticallyMonitorsChanges
         self.reconciliationPolicy = reconciliationSchedule.map(HermesReconciliationPolicy.init)
+        self.staleTurnInterval = staleTurnInterval
+        self.now = now
     }
 
     func start(completion: (() -> Void)? = nil) {
@@ -161,7 +178,7 @@ final class HermesDesktopSessionWatcher {
     private func openDatabaseAndRestoreActiveSessions() -> HermesReadOutcome {
         guard openDatabase() else { return .databaseUnavailable }
         lastMessageId = maximumMessageId()
-        restoreActiveSessions()
+        reconcileActiveSessions()
         return .databaseOpened
     }
 
@@ -202,7 +219,10 @@ final class HermesDesktopSessionWatcher {
             """
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return .noChanges }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            reconcileActiveSessions()
+            return .noChanges
+        }
         sqlite3_bind_int64(statement, 1, lastMessageId)
 
         var rows: [MessageRow] = []
@@ -225,16 +245,38 @@ final class HermesDesktopSessionWatcher {
             lastMessageId = max(lastMessageId, row.id)
             ingest(row)
         }
+        reconcileActiveSessions()
         return rows.isEmpty ? .noChanges : .newRows
     }
 
-    /// Reconstruct only unfinished desktop turns after an app relaunch. Hermes
-    /// keeps open tabs in `sessions` even after a reply is complete, so
-    /// `ended_at IS NULL` alone is not enough; the newest message must still
-    /// represent active work. Replaying from the latest user message restores
-    /// the exact thinking/tool state without surfacing old completed tabs.
-    private func restoreActiveSessions() {
-        guard let database else { return }
+    /// Reconcile provider-owned liveness, including database updates that do
+    /// not append a message. Hermes keeps open tabs in `sessions`, so an
+    /// unfinished message shape is only considered live while its durable
+    /// activity heartbeat remains fresh.
+    private func reconcileActiveSessions() {
+        guard let snapshots = activeTurnSnapshots() else {
+            Log.info("Hermes Desktop skipped liveness reconciliation because the snapshot query failed")
+            return
+        }
+        let structurallyActiveIds = Set(snapshots.map(\.sessionId))
+
+        for sessionId in presentedActiveSessionIds.subtracting(structurallyActiveIds) {
+            endPresentedSession(sessionId: sessionId, reason: "provider ended")
+        }
+
+        for snapshot in snapshots {
+            if isFresh(snapshot) {
+                if !presentedActiveSessionIds.contains(snapshot.sessionId) {
+                    restoreSession(snapshot.sessionId)
+                }
+            } else if presentedActiveSessionIds.contains(snapshot.sessionId) {
+                endPresentedSession(sessionId: snapshot.sessionId, reason: "activity heartbeat stale")
+            }
+        }
+    }
+
+    private func activeTurnSnapshots() -> [ActiveTurnSnapshot]? {
+        guard let database else { return nil }
         let sql = """
             WITH latest_messages AS (
                 SELECT m.*
@@ -244,36 +286,63 @@ final class HermesDesktopSessionWatcher {
                     FROM messages
                     GROUP BY session_id
                 ) latest ON latest.id = m.id
-            ), active_sessions AS (
-                SELECT s.id
-                FROM sessions s
-                JOIN latest_messages latest ON latest.session_id = s.id
-                WHERE s.source = 'desktop'
-                  AND s.ended_at IS NULL
-                  AND (
-                      latest.role IN ('user', 'tool')
-                      OR (latest.role = 'assistant' AND COALESCE(latest.finish_reason, '') != 'stop')
-                  )
-            ), turn_starts AS (
-                SELECT active.id AS session_id,
-                       COALESCE(
-                           (SELECT MAX(id) FROM messages WHERE session_id = active.id AND role = 'user'),
-                           (SELECT MIN(id) FROM messages WHERE session_id = active.id)
-                       ) AS first_message_id
-                FROM active_sessions active
+            )
+            SELECT s.id, latest.timestamp, s.last_activity_at
+            FROM sessions s
+            JOIN latest_messages latest ON latest.session_id = s.id
+            WHERE s.source = 'desktop'
+              AND s.ended_at IS NULL
+              AND (
+                  latest.role IN ('user', 'tool')
+                  OR (latest.role = 'assistant' AND COALESCE(latest.finish_reason, '') != 'stop')
+              )
+            """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return nil }
+
+        var snapshots: [ActiveTurnSnapshot] = []
+        var result = sqlite3_step(statement)
+        while result == SQLITE_ROW {
+            if let sessionId = text(statement, 0), !sessionId.isEmpty {
+                snapshots.append(ActiveTurnSnapshot(
+                    sessionId: sessionId,
+                    latestMessageAt: double(statement, 1),
+                    lastActivityAt: double(statement, 2)
+                ))
+            }
+            result = sqlite3_step(statement)
+        }
+        return result == SQLITE_DONE ? snapshots : nil
+    }
+
+    private func isFresh(_ snapshot: ActiveTurnSnapshot) -> Bool {
+        guard let activityAt = snapshot.activityAt else { return true }
+        return now().timeIntervalSince1970 - activityAt <= staleTurnInterval
+    }
+
+    private func restoreSession(_ sessionId: String) {
+        guard let database else { return }
+        let sql = """
+            WITH turn_start AS (
+                SELECT COALESCE(
+                    (SELECT MAX(id) FROM messages WHERE session_id = ? AND role = 'user'),
+                    (SELECT MIN(id) FROM messages WHERE session_id = ?)
+                ) AS first_message_id
             )
             SELECT m.id, m.session_id, m.role, m.content, m.tool_name,
                    m.tool_calls, m.finish_reason, s.cwd, s.model, s.title
-            FROM turn_starts turn
-            JOIN messages m ON m.session_id = turn.session_id AND m.id >= turn.first_message_id
+            FROM turn_start turn
+            JOIN messages m ON m.session_id = ? AND m.id >= turn.first_message_id
             JOIN sessions s ON s.id = m.session_id
             ORDER BY m.id
             """
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return }
+        bind(sessionId, to: statement, indexes: [1, 2, 3])
 
-        var restoredSessionIds = Set<String>()
+        var restored = false
         while sqlite3_step(statement) == SQLITE_ROW {
             let row = MessageRow(
                 id: sqlite3_column_int64(statement, 0),
@@ -288,12 +357,23 @@ final class HermesDesktopSessionWatcher {
                 title: text(statement, 9)
             )
             guard !row.sessionId.isEmpty else { continue }
-            restoredSessionIds.insert(row.sessionId)
+            restored = true
             ingest(row)
         }
-        if !restoredSessionIds.isEmpty {
-            Log.info("Hermes Desktop restored \(restoredSessionIds.count) active session(s)")
+        if restored {
+            presentedActiveSessionIds.insert(sessionId)
+            Log.info("Hermes Desktop restored active session=\(sessionId.prefix(8))")
         }
+    }
+
+    private func endPresentedSession(sessionId: String, reason: String) {
+        presentedActiveSessionIds.remove(sessionId)
+        Log.info("Hermes Desktop ended session=\(sessionId.prefix(8)) reason=\(reason)")
+        emit(BridgeMessage(
+            sessionId: sessionId,
+            hookEvent: "SessionEnd",
+            source: "hermes"
+        ))
     }
 
     private func ingest(_ row: MessageRow) {
@@ -314,14 +394,21 @@ final class HermesDesktopSessionWatcher {
 
         switch row.role {
         case "user":
+            presentedActiveSessionIds.insert(row.sessionId)
             emit(base("UserPromptSubmit", nil, nil, row.content, nil))
         case "tool":
+            presentedActiveSessionIds.insert(row.sessionId)
             emit(base("PostToolUse", row.toolName ?? "Tool", nil, nil, nil))
         case "assistant":
-            for tool in parseToolCalls(row.toolCalls) {
+            let tools = parseToolCalls(row.toolCalls)
+            if !tools.isEmpty {
+                presentedActiveSessionIds.insert(row.sessionId)
+            }
+            for tool in tools {
                 emit(base("PreToolUse", tool.name, tool.arguments, nil, nil))
             }
             if row.finishReason == "stop" {
+                presentedActiveSessionIds.remove(row.sessionId)
                 emit(base("Stop", nil, nil, nil, row.content))
             }
         default:
@@ -348,5 +435,17 @@ final class HermesDesktopSessionWatcher {
         guard sqlite3_column_type(statement, column) != SQLITE_NULL,
               let value = sqlite3_column_text(statement, column) else { return nil }
         return String(cString: value)
+    }
+
+    private func double(_ statement: OpaquePointer?, _ column: Int32) -> Double? {
+        guard sqlite3_column_type(statement, column) != SQLITE_NULL else { return nil }
+        return sqlite3_column_double(statement, column)
+    }
+
+    private func bind(_ value: String, to statement: OpaquePointer?, indexes: [Int32]) {
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for index in indexes {
+            sqlite3_bind_text(statement, index, value, -1, transient)
+        }
     }
 }
