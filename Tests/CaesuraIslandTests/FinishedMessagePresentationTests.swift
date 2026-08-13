@@ -33,6 +33,22 @@ final class FinishedMessagePresentationTests: XCTestCase {
         XCTAssertTrue(preview.hasSuffix("…"))
     }
 
+    func testReplyViewportFitsShortContentAndCapsLongContent() {
+        XCTAssertEqual(FinishedReplyWindowLayout.replyViewportHeight(contentHeight: 72), 72)
+        XCTAssertEqual(
+            FinishedReplyWindowLayout.replyViewportHeight(contentHeight: 900),
+            FinishedReplyWindowLayout.maximumReplyHeight
+        )
+    }
+
+    func testFinishedWindowFitsMeasuredContentWithinBounds() {
+        XCTAssertEqual(FinishedReplyWindowLayout.fittedHeight(240), 240)
+        XCTAssertEqual(
+            FinishedReplyWindowLayout.fittedHeight(900),
+            FinishedReplyWindowLayout.maximumWindowHeight
+        )
+    }
+
     @MainActor
     func testFinishedPopupRetainsSnapshotAfterLiveSessionDisappears() {
         let viewModel = NotchViewModel()
@@ -49,6 +65,16 @@ final class FinishedMessagePresentationTests: XCTestCase {
         viewModel.collapse()
 
         XCTAssertNil(viewModel.finishedSessionSnapshot)
+    }
+
+    @MainActor
+    func testFinishedPopupAdoptsMeasuredContentHeight() {
+        let viewModel = NotchViewModel()
+        viewModel.showFinished(session: makeSession())
+
+        viewModel.updateFinishedContentHeight(248)
+
+        XCTAssertEqual(viewModel.currentSize.height, 248)
     }
 
     private func makeSession() -> Session {

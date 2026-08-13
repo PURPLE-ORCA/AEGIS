@@ -7,9 +7,11 @@ struct FinishedView: View {
     @ObservedObject var settingsStore: SettingsStore
     let onOpenSettings: () -> Void
     let onToggleExpand: (Bool) -> Void
+    let onContentHeightChange: (CGFloat) -> Void
 
     @Environment(\.notchTheme) private var theme
     @State private var isExpanded = false
+    @State private var measuredReplyHeight = FinishedReplyWindowLayout.initialReplyHeight
 
     var body: some View {
         Group {
@@ -21,7 +23,16 @@ struct FinishedView: View {
                     .transition(.opacity)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .onPreferenceChange(FinishedReplyContentHeightKey.self) { height in
+            guard isExpanded, height > 0,
+                  abs(measuredReplyHeight - height) > 0.5 else { return }
+            measuredReplyHeight = height
+        }
+        .onPreferenceChange(FinishedDetailsHeightKey.self) { height in
+            guard isExpanded, height > 0 else { return }
+            onContentHeightChange(FinishedReplyWindowLayout.fittedHeight(height))
+        }
     }
 
     /// The completion popup starts as one glanceable object: agent + reply.
@@ -181,8 +192,18 @@ struct FinishedView: View {
                         )
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
+                        .background {
+                            GeometryReader { geometry in
+                                Color.clear.preference(
+                                    key: FinishedReplyContentHeightKey.self,
+                                    value: geometry.size.height
+                                )
+                            }
+                        }
                     }
-                    .frame(maxHeight: 360)
+                    .frame(height: FinishedReplyWindowLayout.replyViewportHeight(
+                        contentHeight: measuredReplyHeight
+                    ))
                     .background(
                         UnevenRoundedRectangle(bottomLeadingRadius: theme.boxRadius, bottomTrailingRadius: theme.boxRadius)
                             .fill(theme.boxFill)
@@ -195,7 +216,7 @@ struct FinishedView: View {
                 .padding(.horizontal, 14)
             }
 
-            Spacer(minLength: 10)
+            Color.clear.frame(height: 10)
 
             let dismissInk = theme.buttonInk(.green)
             Button(action: onDismiss) {
@@ -215,6 +236,15 @@ struct FinishedView: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 12)
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .background {
+            GeometryReader { geometry in
+                Color.clear.preference(
+                    key: FinishedDetailsHeightKey.self,
+                    value: geometry.size.height
+                )
+            }
+        }
     }
 
     private func setExpanded(_ expanded: Bool) {
@@ -230,6 +260,38 @@ struct FinishedView: View {
         let lineLabel = "\(lines) line\(lines == 1 ? "" : "s")"
         let byteLabel = bytes >= 1024 ? String(format: "%.1fkB", Double(bytes) / 1024.0) : "\(bytes)B"
         return "\(lineLabel) · \(byteLabel)"
+    }
+}
+
+enum FinishedReplyWindowLayout {
+    static let initialReplyHeight: CGFloat = 44
+    static let minimumReplyHeight: CGFloat = 28
+    static let maximumReplyHeight: CGFloat = 360
+    static let minimumWindowHeight: CGFloat = 104
+    static let maximumWindowHeight: CGFloat = 560
+
+    static func replyViewportHeight(contentHeight: CGFloat) -> CGFloat {
+        min(max(contentHeight, minimumReplyHeight), maximumReplyHeight)
+    }
+
+    static func fittedHeight(_ contentHeight: CGFloat) -> CGFloat {
+        min(max(contentHeight, minimumWindowHeight), maximumWindowHeight)
+    }
+}
+
+private struct FinishedReplyContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct FinishedDetailsHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

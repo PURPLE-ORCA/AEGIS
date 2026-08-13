@@ -172,6 +172,12 @@ final class NotchViewModel: ObservableObject {
         dynamicExpandedHeight = fitted
     }
 
+    func updateFinishedContentHeight(_ height: CGFloat) {
+        let fitted = FinishedReplyWindowLayout.fittedHeight(height)
+        guard abs((dynamicFinishedHeight ?? Self.finishedSize.height) - fitted) > 0.5 else { return }
+        dynamicFinishedHeight = fitted
+    }
+
     func showFinished(session: Session) {
         autoCollapseTask?.cancel()
         finishedAutoCollapseDeadline = Date().addingTimeInterval(Self.finishedHoverCeiling)

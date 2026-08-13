@@ -136,11 +136,13 @@ struct NotchContentView: View {
                     onToggleExpand: { expanded in
                         if expanded {
                             viewModel.cancelAutoCollapse()
-                            viewModel.dynamicFinishedHeight = 560
                         } else {
                             viewModel.dynamicFinishedHeight = NotchViewModel.finishedSize.height
                             viewModel.resumeFinishedAutoCollapse()
                         }
+                    },
+                    onContentHeightChange: { height in
+                        viewModel.updateFinishedContentHeight(height)
                     }
                 )
             } else {
