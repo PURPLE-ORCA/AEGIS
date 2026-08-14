@@ -257,12 +257,49 @@ enum ProviderInstaller {
     /// remove comments, so command identity is the idempotency key. Hermes still
     /// requires consent through `hermes hooks` unless auto-accept is configured.
     private static func installHermesYAML(_ d: Descriptor) -> Bool {
-        let fileURL = configDir(d).appendingPathComponent(d.configFileRel)   // ~/.hermes/config.yaml
-        guard let existing = try? String(contentsOf: fileURL, encoding: .utf8) else {
+        installHermesYAML(
+            d,
+            hermesRoot: configDir(d),
+            launcherCommand: launcherCommand(d.source)
+        )
+    }
+
+    static func installHermesYAML(
+        _ d: Descriptor,
+        hermesRoot: URL,
+        launcherCommand cmd: String
+    ) -> Bool {
+        let fileManager = FileManager.default
+        let rootConfig = hermesRoot.appendingPathComponent(d.configFileRel)
+        let profilesRoot = hermesRoot.appendingPathComponent("profiles", isDirectory: true)
+        let profileDirectories = (try? fileManager.contentsOfDirectory(
+            at: profilesRoot,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        let profileConfigs = profileDirectories
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .map { $0.appendingPathComponent(d.configFileRel) }
+            .filter { fileManager.fileExists(atPath: $0.path) }
+            .sorted { $0.path < $1.path }
+        let configURLs = (fileManager.fileExists(atPath: rootConfig.path) ? [rootConfig] : []) + profileConfigs
+        guard !configURLs.isEmpty else {
             Log.info("ProviderInstaller(hermes): no config.yaml — skipping (Hermes not set up)")
             return true
         }
-        let cmd = launcherCommand(d.source)
+
+        var allSucceeded = true
+        for fileURL in configURLs where !mergeHermesHooks(d, into: fileURL, command: cmd) {
+            allSucceeded = false
+        }
+        return allSucceeded
+    }
+
+    private static func mergeHermesHooks(_ d: Descriptor, into fileURL: URL, command cmd: String) -> Bool {
+        guard let existing = try? String(contentsOf: fileURL, encoding: .utf8) else {
+            Log.error("ProviderInstaller(hermes): failed to read \(fileURL.path)")
+            return false
+        }
         var lines = existing.components(separatedBy: "\n")
         let escapedCommand = cmd.replacingOccurrences(of: "'", with: "''")
         let start: Int

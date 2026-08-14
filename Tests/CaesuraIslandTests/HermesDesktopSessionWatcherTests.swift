@@ -4,6 +4,134 @@ import XCTest
 @testable import CaesuraIsland
 
 final class HermesDesktopSessionWatcherTests: XCTestCase {
+    func testRestoresUnfinishedTurnFromNamedProfileAtStartup() throws {
+        let root = try makeDatabaseRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let profileRoot = root.appendingPathComponent("profiles/orcanee", isDirectory: true)
+        try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
+        let database = try openDatabase(at: profileRoot)
+        defer { sqlite3_close(database) }
+
+        try insertSession(database, id: "profile-active", title: "Profile task")
+        try insertMessage(database, sessionId: "profile-active", role: "user", content: "profile prompt")
+
+        let watcher = HermesDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil
+        )
+        let started = expectation(description: "watcher started")
+        let restored = expectation(description: "profile turn restored")
+        watcher.onMessage = { message in
+            if message.sessionId == "profile-active", message.userMessage == "profile prompt" {
+                restored.fulfill()
+            }
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started, restored], timeout: 3)
+        watcher.stop()
+    }
+
+    func testReconciliationDiscoversProfileCreatedAfterStartup() throws {
+        let root = try makeDatabaseRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let watcher = HermesDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil
+        )
+        let started = expectation(description: "watcher started")
+        let discovered = expectation(description: "new profile discovered")
+        watcher.onMessage = { message in
+            if message.sessionId == "late-profile" { discovered.fulfill() }
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started], timeout: 3)
+        defer { watcher.stop() }
+
+        let profileRoot = root.appendingPathComponent("profiles/late", isDirectory: true)
+        try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
+        let database = try openDatabase(at: profileRoot)
+        defer { sqlite3_close(database) }
+        try insertSession(database, id: "late-profile", title: "Late profile task")
+        try insertMessage(database, sessionId: "late-profile", role: "user", content: "discover me")
+
+        watcher.reconcileNow()
+        wait(for: [discovered], timeout: 3)
+    }
+
+    func testPrefersNamedProfileWhenSessionWasCopiedFromLegacyDatabase() throws {
+        let root = try makeDatabaseRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let legacyDatabase = try openDatabase(at: root)
+        defer { sqlite3_close(legacyDatabase) }
+        try insertSession(legacyDatabase, id: "migrated", title: "Legacy copy")
+        try insertMessage(legacyDatabase, sessionId: "migrated", role: "user", content: "legacy prompt")
+
+        let profileRoot = root.appendingPathComponent("profiles/orcanee", isDirectory: true)
+        try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
+        let profileDatabase = try openDatabase(at: profileRoot)
+        defer { sqlite3_close(profileDatabase) }
+        try insertSession(profileDatabase, id: "migrated", title: "Profile copy")
+        try insertMessage(profileDatabase, sessionId: "migrated", role: "user", content: "profile prompt")
+
+        let watcher = HermesDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil
+        )
+        let started = expectation(description: "watcher started")
+        let restored = expectation(description: "preferred profile restored")
+        var prompts: [String] = []
+        watcher.onMessage = { message in
+            if let prompt = message.userMessage {
+                prompts.append(prompt)
+                if prompt == "profile prompt" { restored.fulfill() }
+            }
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started, restored], timeout: 3)
+        watcher.stop()
+
+        XCTAssertEqual(prompts, ["profile prompt"])
+    }
+
+    func testFallsBackToLegacyDatabaseWhenPreferredProfileDisappears() throws {
+        let root = try makeDatabaseRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let legacyDatabase = try openDatabase(at: root)
+        defer { sqlite3_close(legacyDatabase) }
+        try insertSession(legacyDatabase, id: "migrated", title: "Legacy copy")
+        try insertMessage(legacyDatabase, sessionId: "migrated", role: "user", content: "legacy prompt")
+
+        let profileRoot = root.appendingPathComponent("profiles/orcanee", isDirectory: true)
+        try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
+        let profileDatabase = try openDatabase(at: profileRoot)
+        try insertSession(profileDatabase, id: "migrated", title: "Profile copy")
+        try insertMessage(profileDatabase, sessionId: "migrated", role: "user", content: "profile prompt")
+
+        let watcher = HermesDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil
+        )
+        let started = expectation(description: "watcher started")
+        let profileRestored = expectation(description: "profile restored")
+        let legacyRestored = expectation(description: "legacy fallback restored")
+        watcher.onMessage = { message in
+            if message.userMessage == "profile prompt" { profileRestored.fulfill() }
+            if message.userMessage == "legacy prompt" { legacyRestored.fulfill() }
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started, profileRestored], timeout: 3)
+        defer { watcher.stop() }
+
+        sqlite3_close(profileDatabase)
+        try FileManager.default.removeItem(at: profileRoot.appendingPathComponent("state.db"))
+        watcher.reconcileNow()
+        wait(for: [legacyRestored], timeout: 3)
+    }
+
     func testRestoresUnfinishedDesktopTurnAtStartupWithoutCompletedTabs() throws {
         let root = try makeDatabaseRoot()
         defer { try? FileManager.default.removeItem(at: root) }

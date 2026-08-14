@@ -42,6 +42,253 @@ struct HermesReconciliationPolicy {
 final class HermesDesktopSessionWatcher {
     var onMessage: ((BridgeMessage) -> Void)?
 
+    private let root: URL
+    private let automaticallyMonitorsChanges: Bool
+    private let reconciliationPolicy: HermesReconciliationPolicy?
+    private let staleTurnInterval: TimeInterval
+    private let now: () -> Date
+    private let queue = DispatchQueue(label: "dev.caesura.island.hermes-desktop.catalog", qos: .utility)
+    private var workers: [String: HermesDesktopDatabaseWatcher] = [:]
+    private var preferredStoreBySession: [String: String] = [:]
+    private var activeSessionsByStore: [String: Set<String>] = [:]
+    private var monitor: FileEventMonitor?
+    private var reconciliationTimer: DispatchSourceTimer?
+    private var refreshWorkItem: DispatchWorkItem?
+    private var isRunning = false
+
+    init(
+        root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".hermes"),
+        automaticallyMonitorsChanges: Bool = true,
+        reconciliationSchedule: HermesReconciliationSchedule? = .standard,
+        staleTurnInterval: TimeInterval = 5 * 60,
+        now: @escaping () -> Date = Date.init
+    ) {
+        self.root = root.resolvingSymlinksInPath().standardizedFileURL
+        self.automaticallyMonitorsChanges = automaticallyMonitorsChanges
+        self.reconciliationPolicy = reconciliationSchedule.map(HermesReconciliationPolicy.init)
+        self.staleTurnInterval = staleTurnInterval
+        self.now = now
+    }
+
+    func start(completion: (() -> Void)? = nil) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            guard !self.isRunning else {
+                completion?()
+                return
+            }
+            self.isRunning = true
+            self.refreshWorkers {
+                guard self.isRunning else {
+                    completion?()
+                    return
+                }
+                if self.automaticallyMonitorsChanges { self.startMonitor() }
+                self.scheduleSafetyCheck(after: self.workers.isEmpty ? .databaseUnavailable : .databaseOpened)
+                Log.info("Hermes Desktop catalog watching \(self.workers.count) database(s)")
+                completion?()
+            }
+        }
+    }
+
+    func stop() {
+        queue.sync {
+            isRunning = false
+            refreshWorkItem?.cancel()
+            refreshWorkItem = nil
+            reconciliationTimer?.cancel()
+            reconciliationTimer = nil
+            monitor?.stop()
+            monitor = nil
+            workers.values.forEach { $0.stop() }
+            workers.removeAll()
+            preferredStoreBySession.removeAll()
+            activeSessionsByStore.removeAll()
+        }
+    }
+
+    func reconcileNow() {
+        queue.async { [weak self] in
+            guard self?.isRunning == true else { return }
+            self?.reconcileStores()
+        }
+    }
+
+    private func startMonitor() {
+        guard monitor == nil else { return }
+        let rootPath = root.path
+        let profilesPath = root.appendingPathComponent("profiles", isDirectory: true).path
+        let monitor = FileEventMonitor(
+            root: root,
+            label: "dev.caesura.island.hermes-desktop.events",
+            recursive: true,
+            includeEvent: { path, _ in
+                path == rootPath
+                    || path == rootPath + "/state.db"
+                    || path == rootPath + "/state.db-wal"
+                    || path == rootPath + "/state.db-shm"
+                    || path == profilesPath
+                    || path.hasPrefix(profilesPath + "/")
+            },
+            includeFile: { url in
+                ["state.db", "state.db-wal", "state.db-shm"].contains(url.lastPathComponent)
+            }
+        ) { [weak self] _ in
+            self?.scheduleRefresh()
+        }
+        self.monitor = monitor
+        monitor.start()
+    }
+
+    private func scheduleRefresh() {
+        queue.async { [weak self] in
+            guard let self, self.isRunning else { return }
+            self.refreshWorkItem?.cancel()
+            self.scheduleSafetyCheck(after: .newRows)
+            let work = DispatchWorkItem { [weak self] in self?.reconcileStores() }
+            self.refreshWorkItem = work
+            self.queue.asyncAfter(deadline: .now() + 0.06, execute: work)
+        }
+    }
+
+    private func scheduleSafetyCheck(after outcome: HermesReadOutcome) {
+        guard isRunning, let reconciliationPolicy else { return }
+        let delay = reconciliationPolicy.delay(after: outcome)
+        guard delay > 0 else { return }
+        if reconciliationTimer == nil {
+            let timer = DispatchSource.makeTimerSource(queue: queue)
+            timer.setEventHandler { [weak self] in self?.reconcileStores() }
+            reconciliationTimer = timer
+            timer.resume()
+        }
+        reconciliationTimer?.schedule(deadline: .now() + delay, leeway: .milliseconds(500))
+    }
+
+    private func reconcileStores() {
+        guard isRunning else { return }
+        refreshWorkers { [weak self] in
+            guard let self, self.isRunning else { return }
+            self.workers.values.forEach { $0.reconcileNow() }
+            self.scheduleSafetyCheck(after: self.workers.isEmpty ? .databaseUnavailable : .noChanges)
+        }
+    }
+
+    private func refreshWorkers(completion: @escaping () -> Void) {
+        let databaseURLs = discoverDatabaseURLs()
+        let discoveredKeys = Set(databaseURLs.map(\.path))
+        let previousPreferredStores = preferredStoreBySession
+        let nextPreferredStores = preferredStores(in: databaseURLs)
+        for key in Set(workers.keys).subtracting(discoveredKeys) {
+            removeWorker(for: key, nextPreferredStores: nextPreferredStores)
+        }
+        preferredStoreBySession = nextPreferredStores
+
+        let group = DispatchGroup()
+        for databaseURL in databaseURLs where workers[databaseURL.path] == nil {
+            let key = databaseURL.path
+            let worker = HermesDesktopDatabaseWatcher(
+                root: databaseURL.deletingLastPathComponent(),
+                automaticallyMonitorsChanges: false,
+                reconciliationSchedule: nil,
+                staleTurnInterval: staleTurnInterval,
+                now: now
+            )
+            worker.onMessage = { [weak self] message in
+                self?.queue.async { self?.handle(message, from: key) }
+            }
+            workers[key] = worker
+            group.enter()
+            worker.start { group.leave() }
+        }
+        group.notify(queue: queue) { [weak self] in
+            guard let self else { return }
+            let reassignedSessions = nextPreferredStores.compactMap { sessionId, store -> (String, String)? in
+                guard previousPreferredStores[sessionId] != nil,
+                      previousPreferredStores[sessionId] != store else { return nil }
+                return (sessionId, store)
+            }
+            for (sessionId, store) in reassignedSessions {
+                self.workers[store]?.replaySession(sessionId)
+            }
+            completion()
+        }
+    }
+
+    private func removeWorker(for key: String, nextPreferredStores: [String: String]) {
+        workers.removeValue(forKey: key)?.stop()
+        let orphanedSessions = activeSessionsByStore.removeValue(forKey: key) ?? []
+        for sessionId in orphanedSessions where nextPreferredStores[sessionId] == nil {
+            emit(BridgeMessage(sessionId: sessionId, hookEvent: "SessionEnd", source: "hermes"))
+        }
+    }
+
+    private func handle(_ message: BridgeMessage, from store: String) {
+        guard isRunning else { return }
+        guard preferredStoreBySession[message.sessionId].map({ $0 == store }) ?? true else { return }
+        if message.hookEvent == "Stop" || message.hookEvent == "SessionEnd" {
+            activeSessionsByStore[store, default: []].remove(message.sessionId)
+        } else {
+            activeSessionsByStore[store, default: []].insert(message.sessionId)
+        }
+        emit(message)
+    }
+
+    private func emit(_ message: BridgeMessage) {
+        DispatchQueue.main.async { [weak self] in self?.onMessage?(message) }
+    }
+
+    private func discoverDatabaseURLs() -> [URL] {
+        let fileManager = FileManager.default
+        let profilesRoot = root.appendingPathComponent("profiles", isDirectory: true)
+        let profileDirectories = (try? fileManager.contentsOfDirectory(
+            at: profilesRoot,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        let profileDatabases = profileDirectories
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .map { $0.appendingPathComponent("state.db") }
+            .filter { fileManager.fileExists(atPath: $0.path) }
+            .sorted { $0.path < $1.path }
+        let legacyDatabase = root.appendingPathComponent("state.db")
+        return profileDatabases + (fileManager.fileExists(atPath: legacyDatabase.path) ? [legacyDatabase] : [])
+    }
+
+    private func preferredStores(in databaseURLs: [URL]) -> [String: String] {
+        var preferred: [String: String] = [:]
+        for databaseURL in databaseURLs {
+            for sessionId in sessionIDs(in: databaseURL) where preferred[sessionId] == nil {
+                preferred[sessionId] = databaseURL.path
+            }
+        }
+        return preferred
+    }
+
+    private func sessionIDs(in databaseURL: URL) -> [String] {
+        var database: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
+        guard sqlite3_open_v2(databaseURL.path, &database, flags, nil) == SQLITE_OK, let database else {
+            if let database { sqlite3_close(database) }
+            return []
+        }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 150)
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, "SELECT id FROM sessions", -1, &statement, nil) == SQLITE_OK else {
+            return []
+        }
+        var sessionIDs: [String] = []
+        while sqlite3_step(statement) == SQLITE_ROW, let value = sqlite3_column_text(statement, 0) {
+            sessionIDs.append(String(cString: value))
+        }
+        return sessionIDs
+    }
+}
+
+private final class HermesDesktopDatabaseWatcher {
+    var onMessage: ((BridgeMessage) -> Void)?
+
     private struct ActiveTurnSnapshot {
         let sessionId: String
         let latestMessageAt: TimeInterval?
@@ -137,6 +384,14 @@ final class HermesDesktopSessionWatcher {
     func reconcileNow() {
         queue.async { [weak self] in
             self?.readAndScheduleNextSafetyCheck()
+        }
+    }
+
+    func replaySession(_ sessionId: String) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.presentedActiveSessionIds.remove(sessionId)
+            self.reconcileActiveSessions()
         }
     }
 
