@@ -179,7 +179,7 @@ final class SocketServer {
 
         Log.info("Socket: parsed message source=\(message.source ?? "nil") hookEvent=\(message.hookEvent) session=\(message.sessionId.prefix(12)) toolName=\(message.toolName ?? "nil") effort=\(message.effortLevel ?? "nil") durationMs=\(message.durationMs.map(String.init) ?? "nil")")
 
-        DispatchQueue.main.async { [weak self] in
+        RunLoop.main.perform { [weak self] in
             self?.onMessage?(message, respond, respondRaw)
         }
 

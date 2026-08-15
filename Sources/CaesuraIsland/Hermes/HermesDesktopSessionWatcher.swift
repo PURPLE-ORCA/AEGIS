@@ -234,7 +234,7 @@ final class HermesDesktopSessionWatcher {
     }
 
     private func emit(_ message: BridgeMessage) {
-        DispatchQueue.main.async { [weak self] in self?.onMessage?(message) }
+        RunLoop.main.perform { [weak self] in self?.onMessage?(message) }
     }
 
     private func discoverDatabaseURLs() -> [URL] {
@@ -683,7 +683,7 @@ private final class HermesDesktopDatabaseWatcher {
     }
 
     private func emit(_ message: BridgeMessage) {
-        DispatchQueue.main.async { [weak self] in self?.onMessage?(message) }
+        RunLoop.main.perform { [weak self] in self?.onMessage?(message) }
     }
 
     private func text(_ statement: OpaquePointer?, _ column: Int32) -> String? {

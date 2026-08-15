@@ -30,11 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Wire up socket → session store → sound
         socketServer.onMessage = { [weak self] message, respond, respondRaw in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                Log.info("Received: \(message.hookEvent) session=\(message.sessionId.prefix(8))")
-                self.sessionStore.handleMessage(message, respond: respond, respondRaw: respondRaw)
-            }
+            guard let self else { return }
+            Log.info("Received: \(message.hookEvent) session=\(message.sessionId.prefix(8))")
+            self.sessionStore.handleMessage(message, respond: respond, respondRaw: respondRaw)
         }
 
         sessionStore.onEvent

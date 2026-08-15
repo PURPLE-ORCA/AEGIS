@@ -385,7 +385,7 @@ final class CodexDesktopSessionWatcher {
     }
 
     private func emit(_ message: BridgeMessage) {
-        DispatchQueue.main.async { [weak self] in self?.onMessage?(message) }
+        RunLoop.main.perform { [weak self] in self?.onMessage?(message) }
     }
 
     private func fileSize(_ url: URL) -> UInt64 {
