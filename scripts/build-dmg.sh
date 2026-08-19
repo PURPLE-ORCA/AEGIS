@@ -7,19 +7,19 @@ cd "$ROOT"
 
 ./scripts/build-app.sh "$VERSION"
 
-DMG="build/CAESURA-ISLAND-${VERSION}.dmg"
+DMG="build/Aegis-${VERSION}.dmg"
 rm -f "$DMG"
 create-dmg \
-  --volname "CAESURA-ISLAND" \
+  --volname "Aegis" \
   --volicon "build/AppIcon.icns" \
   --window-pos 200 120 \
   --window-size 660 425 \
   --icon-size 120 \
-  --icon "CAESURA-ISLAND.app" 170 205 \
+  --icon "Aegis.app" 170 205 \
   --app-drop-link 490 205 \
-  --hide-extension "CAESURA-ISLAND.app" \
+  --hide-extension "Aegis.app" \
   --no-internet-enable \
   "$DMG" \
-  "build/CAESURA-ISLAND.app"
+  "build/Aegis.app"
 
 echo "==> Done: $DMG"

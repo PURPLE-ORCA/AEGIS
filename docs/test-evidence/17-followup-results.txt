@@ -1,4 +1,4 @@
-CAESURA-ISLAND follow-up verification
+Aegis follow-up verification
 Date: 2026-08-10 (Africa/Casablanca)
 
 PASS — Codex quota semantics
@@ -6,7 +6,7 @@ PASS — Codex quota semantics
 - 604800 seconds is a 7-day window; remaining quota is 42%.
 - GUI rendered: `7d 42% left 5d3h`.
 - Refresh cadence changed from five minutes to one minute.
-- Evidence: 13-caesura-quota.png
+- Evidence: 13-aegis-quota.png
 
 PASS — stacked-display hover controls
 - Standalone built-in display expands immediately with no delay or Task allocation.
@@ -27,12 +27,12 @@ PASS — calm notification palette
 - Computer Use cannot judge audible taste.
 - Evidence: 16-calm-sounds.png
 
-PASS — purple-black Caesura appearance
+PASS — purple-black Aegis appearance
 - New theme added and selected through one-time appearance migration.
-- GUI confirmed selected `Caesura` card and violet/black expanded notch.
-- Evidence: 13-caesura-quota.png, 15-caesura-theme.png
+- GUI confirmed selected `Aegis` card and violet/black expanded notch.
+- Evidence: 13-aegis-quota.png, 15-aegis-theme.png
 
 PASS — Settings shortcut
 - GUI testing exposed that Command-comma opened the empty SwiftUI settings scene.
-- Command-comma now routes to the real CAESURA-ISLAND Settings window.
+- Command-comma now routes to the real Aegis Settings window.
 - Verified full General, Appearance, and Sound forms through Computer Use.

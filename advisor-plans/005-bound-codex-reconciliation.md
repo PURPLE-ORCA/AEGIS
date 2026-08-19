@@ -25,8 +25,8 @@ Active transcripts retain the one-second completion safety bound. Newly created/
 
 In scope:
 
-- `Sources/CaesuraIsland/Codex/CodexDesktopSessionWatcher.swift`
-- `Tests/CaesuraIslandTests/CodexDesktopSessionWatcherTests.swift`
+- `Sources/Aegis/Codex/CodexDesktopSessionWatcher.swift`
+- `Tests/AegisTests/CodexDesktopSessionWatcherTests.swift`
 - A small internal reconciliation policy/counter type if needed
 
 Out of scope:

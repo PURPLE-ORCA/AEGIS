@@ -13,7 +13,7 @@ Current call site:
 ```swift
 FileEventMonitor(
     root: self.root,
-    label: "dev.caesura.island.hermes-desktop.events",
+    label: "dev.aegis.app.hermes-desktop.events",
     includeFile: { $0.lastPathComponent.hasPrefix("state.db") }
 ) { [weak self] _ in
     self?.scheduleRefresh()
@@ -30,10 +30,10 @@ Unrelated `.hermes` writes must not schedule SQLite work. Relevant `state.db`, `
 
 In scope:
 
-- `Sources/CaesuraIsland/Utilities/FileEventMonitor.swift`
-- `Sources/CaesuraIsland/Hermes/HermesDesktopSessionWatcher.swift`
-- `Tests/CaesuraIslandTests/FileEventMonitorTests.swift`
-- `Tests/CaesuraIslandTests/HermesDesktopSessionWatcherTests.swift`
+- `Sources/Aegis/Utilities/FileEventMonitor.swift`
+- `Sources/Aegis/Hermes/HermesDesktopSessionWatcher.swift`
+- `Tests/AegisTests/FileEventMonitorTests.swift`
+- `Tests/AegisTests/HermesDesktopSessionWatcherTests.swift`
 
 Out of scope:
 
@@ -88,7 +88,7 @@ Expose scheduler decisions through a pure policy or injected clock. Do not make 
 With Hermes Desktop actively writing its database:
 
 1. Run `sample <pid> 5 1` before and after.
-2. Count stacks containing `dev.caesura.island.hermes-desktop.events`, `FileEventMonitor.handle`, `readNewMessages`, and `sqlite3_prepare_v2`.
+2. Count stacks containing `dev.aegis.app.hermes-desktop.events`, `FileEventMonitor.handle`, `readNewMessages`, and `sqlite3_prepare_v2`.
 3. Record 30-sample CPU/RSS/descriptor output.
 4. Confirm a real Hermes prompt/tool/finish cycle reaches the UI within 500ms through FSEvents.
 5. Leave Hermes idle for 60 seconds and confirm no more than four safety SQLite reads occur.

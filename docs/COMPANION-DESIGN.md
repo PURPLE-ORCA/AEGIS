@@ -1,10 +1,10 @@
 # Ambient Companion Contract
 
-Mysa is CAESURA-ISLAND's optional MSW ambient sentinel. It communicates useful local agent state without creating a second productivity system.
+Mysa is Aegis's optional ambient sentinel. It communicates useful local agent state without creating a second productivity system.
 
 ## Product boundary
 
-The companion must never gain hunger, XP, token feeding, streak loss, loot, rankings, leaderboards, collectible pressure, or forced daily-return mechanics. Its state remains local and derives only from the sessions CAESURA-ISLAND already observes.
+The companion must never gain hunger, XP, token feeding, streak loss, loot, rankings, leaderboards, collectible pressure, or forced daily-return mechanics. Its state remains local and derives only from the sessions Aegis already observes.
 
 ## State grammar
 

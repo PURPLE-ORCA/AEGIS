@@ -29,7 +29,7 @@ Do not change click-to-open behavior, status colors, mascot artwork, provider se
 - `swift test`
 - `git diff --check`
 - `./scripts/build-app.sh`
-- `codesign --verify --deep --strict build/CAESURA-ISLAND.app`
+- `codesign --verify --deep --strict build/Aegis.app`
 - Relaunch the workspace-built app and verify repeated hover expansion, reversal, and collapse.
 
 ## Execution notes

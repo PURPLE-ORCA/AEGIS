@@ -6,7 +6,7 @@ Baseline commit: `c9450ce`
 
 ## Why this matters
 
-CAESURA-ISLAND is an all-day background utility. `AppDelegate` constructs `SoundEngine` eagerly, and `SoundEngine.init()` immediately starts an `AVAudioEngine`. Disabling sound only flips a Boolean; it does not stop or release the engine. Runtime sampling confirmed persistent CoreAudio I/O and parameter-refresh threads while no sound was playing.
+Aegis is an all-day background utility. `AppDelegate` constructs `SoundEngine` eagerly, and `SoundEngine.init()` immediately starts an `AVAudioEngine`. Disabling sound only flips a Boolean; it does not stop or release the engine. Runtime sampling confirmed persistent CoreAudio I/O and parameter-refresh threads while no sound was playing.
 
 Current state:
 
@@ -21,7 +21,7 @@ func setEnabled(_ enabled: Bool) {
 }
 ```
 
-See `Sources/CaesuraIsland/Sound/SoundEngine.swift:25-28`, `:50-52`, and `:80-103`.
+See `Sources/Aegis/Sound/SoundEngine.swift:25-28`, `:50-52`, and `:80-103`.
 
 ## Required outcome
 
@@ -31,9 +31,9 @@ The audio graph must not exist while muted and must stop after an idle grace per
 
 In scope:
 
-- `Sources/CaesuraIsland/Sound/SoundEngine.swift`
-- `Sources/CaesuraIsland/App/AppDelegate.swift` only if lifecycle wiring is required
-- New focused tests under `Tests/CaesuraIslandTests/`
+- `Sources/Aegis/Sound/SoundEngine.swift`
+- `Sources/Aegis/App/AppDelegate.swift` only if lifecycle wiring is required
+- New focused tests under `Tests/AegisTests/`
 
 Out of scope:
 
@@ -76,7 +76,7 @@ Do not make unit tests open the real audio device. Inject a narrow engine-driver
 Before editing, record a five-second idle `sample` and the 30-sample baseline. After editing:
 
 1. Launch the release app with sound enabled and wait five seconds after any startup sound.
-2. Sample for five seconds. `com.apple.audio.IOThread.client` and `AUScheduledParameterRefresher` must not remain attributable to CAESURA-ISLAND.
+2. Sample for five seconds. `com.apple.audio.IOThread.client` and `AUScheduledParameterRefresher` must not remain attributable to Aegis.
 3. Play a Settings preview, verify audio starts, wait three seconds, and sample again to verify teardown.
 4. Repeat `./scripts/measure-performance.sh 30` with the same session workload.
 

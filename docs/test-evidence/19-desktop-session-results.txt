@@ -1,4 +1,4 @@
-CAESURA-ISLAND desktop integration test — 2026-08-10
+Aegis desktop integration test — 2026-08-10
 
 Build:
   swift build                                      PASS
@@ -18,10 +18,10 @@ Hermes Desktop:
   Filter: sessions.source = 'desktop'
   Test prompt submitted in Hermes.app at 18:34:36:
     Reply with exactly: Hermes Desktop detected.
-  UserPromptSubmit observed by CAESURA-ISLAND at 18:34:36.
+  UserPromptSubmit observed by Aegis at 18:34:36.
   Hermes final response:
     Hermes Desktop detected.
-  Stop observed by CAESURA-ISLAND at 18:35:08.
+  Stop observed by Aegis at 18:35:08.
   Expanded GUI showed HERMES (1), prompt, model, Idle state, and final response.
 
 Computer-use result:
@@ -31,4 +31,4 @@ Computer-use result:
 Scope note:
   Desktop session monitoring is read-only. Provider-owned permission dialogs
   remain in Codex Desktop and Hermes Desktop. CLI hook permission requests can
-  still be answered from CAESURA-ISLAND.
+  still be answered from Aegis.

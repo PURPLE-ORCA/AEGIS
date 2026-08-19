@@ -1,19 +1,19 @@
-# CAESURA-ISLAND handoff
+# Aegis handoff
 
 ## Repository
 
-Location: `/Users/purpleorca/Documents/DEV/FULLSTACK/CAESURA-ISLAND`
+Location: `/Users/purpleorca/Documents/DEV/DESKTOP/AEGIS`
 
-The repository has fresh local history with no imported upstream Git ancestry. The runnable product is an ad-hoc-signed arm64 app bundle at `build/CAESURA-ISLAND.app`.
+The repository has fresh local history with no imported upstream Git ancestry. The runnable product is an ad-hoc-signed arm64 app bundle at `build/Aegis.app`.
 
 Build and run:
 
 ```bash
-cd /Users/purpleorca/Documents/DEV/FULLSTACK/CAESURA-ISLAND
+cd /Users/purpleorca/Documents/DEV/DESKTOP/AEGIS
 swift build
 swift build -c release
 ./scripts/build-app.sh 0.1.0
-open build/CAESURA-ISLAND.app
+open build/Aegis.app
 ```
 
 Final verification passed for the debug build, release build, bundle assembly, `Info.plist` validation, and `codesign --verify --deep --strict`. The local bundle is ad-hoc signed, not Developer ID signed or notarized.
@@ -23,7 +23,7 @@ Final verification passed for the debug build, release build, bundle assembly, `
 - Codex quota display now classifies windows from API duration, shows remaining quota, and refreshes every minute. Current verified output: `7d 42% left 5d3h`.
 - Notch hover is instant on the standalone built-in display. With multiple active displays it uses a 350ms intent delay so fast crossings cancel. Click still opens immediately, and Settings includes an `Expand on hover` toggle for click-only mode.
 - Default game-style waveforms were replaced by restrained sine-partial notification tones. Session start/end and tool-use chatter default to Off.
-- The purple-black `Caesura` appearance is selected by default through a one-time preference migration. Window chrome, cards, pills, and action wells now use purple-black surfaces; semantic cyan/green/orange remains limited to meaningful text, icons, and borders.
+- The purple-black `Aegis` appearance is selected by default through a one-time preference migration. Window chrome, cards, pills, and action wells now use purple-black surfaces; semantic cyan/green/orange remains limited to meaningful text, icons, and borders.
 - Command-comma now opens the real Settings window instead of the empty SwiftUI settings scene.
 - Codex Desktop is monitored through appended rollout JSONL events in `~/.codex/sessions`; the previous redundant `codex app-server` subprocess was removed.
 - Hermes Desktop is monitored through new desktop-only message rows in `~/.hermes/state.db` using SQLite WAL-safe reads.
@@ -35,7 +35,7 @@ Final verification passed for the debug build, release build, bundle assembly, `
 - Removed 13 of the 17 upstream agent providers and retained exactly Codex, Hermes, OpenCode, and AntiGravity.
 - Deleted 56 tracked upstream files across provider implementations, provider artwork, old documentation/site assets, credits, licensing, funding, updater, and demo tooling.
 - Removed all 9 requested upstream-identity search targets from the working tree, together with upstream repository URLs, update feed, screenshots, and logo artwork.
-- Renamed the app, products, targets, bundle identity, socket, config domain, bridge, launchers, defaults domain, hook marker, and on-disk state to CAESURA-ISLAND / CaesuraIsland.
+- Renamed the app, products, targets, bundle identity, socket, config domain, bridge, launchers, defaults domain, hook marker, and on-disk state to Aegis.
 - Preserved the bridge, socket protocol, canonical events, in-memory session store and process sweep, terminal jumper, permission/question queue, rate-limit polling, sound engine, theme tokens, and mascot engine.
 - Rewrote the README, engineering spec, and changelog in English.
 
@@ -57,7 +57,7 @@ Final verification passed for the debug build, release build, bundle assembly, `
 | 3. Codex CLI live working → finished | Partial / live UI untested | The real command completed, but installed Codex CLI 0.135.0 did not emit lifecycle hooks. Direct launcher → bridge → socket delivery passed. See [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt). |
 | 3. Codex Desktop live prompt/tool state | Pass | [`docs/test-evidence/codex-desktop-working.png`](docs/test-evidence/codex-desktop-working.png), [`docs/test-evidence/desktop-sessions-expanded.png`](docs/test-evidence/desktop-sessions-expanded.png), [`docs/test-evidence/19-desktop-session-results.txt`](docs/test-evidence/19-desktop-session-results.txt) |
 | Desktop session-card jump | Codex pass; Hermes partial pending owner permission | Codex cards opened exact thread IDs. Hermes activated and reached the exact-tab Accessibility boundary; its first click now requests the required permission. [`docs/test-evidence/20-clickable-session-cards.jpeg`](docs/test-evidence/20-clickable-session-cards.jpeg), [`docs/test-evidence/21-session-jump-results.txt`](docs/test-evidence/21-session-jump-results.txt) |
-| Complete purple-black Caesura surfaces | Pass | Built app GUI shows the window, session card, status pill, and action well using the intended purple-black surface system. Semantic cyan remains only on the tool-state content. [`docs/test-evidence/22-complete-caesura-theme.jpeg`](docs/test-evidence/22-complete-caesura-theme.jpeg) |
+| Complete purple-black Aegis surfaces | Pass | Built app GUI shows the window, session card, status pill, and action well using the intended purple-black surface system. Semantic cyan remains only on the tool-state content. [`docs/test-evidence/22-complete-aegis-theme.jpeg`](docs/test-evidence/22-complete-aegis-theme.jpeg) |
 | 3. AntiGravity live working → finished | Partial / live UI untested | The real `agy --print` command completed, but the headless client did not emit its configured hooks. See [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt). |
 | 4. Permission Allow and Deny | Pass | [`docs/test-evidence/08-opencode-permission.png`](docs/test-evidence/08-opencode-permission.png), [`docs/test-evidence/09-opencode-deny.png`](docs/test-evidence/09-opencode-deny.png), [`docs/test-evidence/11-runtime-results.txt`](docs/test-evidence/11-runtime-results.txt) |
 | 5. Terminal jump | Untested | Computer Use refused access to Ghostty for safety reasons, so the destination tab could not be driven or observed. |
@@ -67,7 +67,7 @@ Final verification passed for the debug build, release build, bundle assembly, `
 
 No crash, hang, or focus steal occurred during the completed GUI tests.
 
-The built app includes an Apple Events usage description for exact Hermes navigation. On the first Hermes card click, macOS asks the owner to grant CAESURA-ISLAND Accessibility access. Without it, Hermes is still focused but its exact session tab cannot be selected.
+The built app includes an Apple Events usage description for exact Hermes navigation. On the first Hermes card click, macOS asks the owner to grant Aegis Accessibility access. Without it, Hermes is still focused but its exact session tab cannot be selected.
 
 Codex and Hermes desktop monitoring is read-only. It covers prompt, thinking, tool, final-response, model, title, and workspace state. Provider-owned desktop permission dialogs remain in their respective desktop apps; notch Allow/Deny continues to apply to interactive CLI hook requests.
 
@@ -75,15 +75,15 @@ Codex and Hermes desktop monitoring is read-only. It covers prompt, thinking, to
 
 Backups were created before first launch:
 
-- `~/.codex/config.toml.bak-caesura`
-- `~/.hermes/config.yaml.bak-caesura`
-- `~/.config/opencode/opencode.json.bak-caesura`
+- `~/.codex/config.toml.bak-aegis`
+- `~/.hermes/config.yaml.bak-aegis`
+- `~/.config/opencode/opencode.json.bak-aegis`
 
-The corresponding Codex hooks, Gemini/AntiGravity hooks, and OpenCode JSONC files did not exist before launch, so there was no original file to copy. CAESURA-marked entries now exist in the four real agent configurations, and the four launchers are installed under `~/.caesura-island/bin`. Details and hashes are in [`docs/test-evidence/02-installers.txt`](docs/test-evidence/02-installers.txt).
+The corresponding Codex hooks, Gemini/AntiGravity hooks, and OpenCode JSONC files did not exist before launch, so there was no original file to copy. Aegis-marked entries now exist in the four real agent configurations, and the four launchers are installed under `~/.aegis/bin`. Details and hashes are in [`docs/test-evidence/02-installers.txt`](docs/test-evidence/02-installers.txt).
 
 ## Deliberate leftovers
 
-- `CLAUDE.md` remains as the repository's engineering-spec filename; its content is rewritten for CAESURA-ISLAND and contains no Claude provider integration.
+- `CLAUDE.md` remains as the repository's engineering-spec filename; its content is rewritten for Aegis and contains no Claude provider integration.
 - `~/.gemini/config/hooks.json` and `.gemini/antigravity` remain because they are AntiGravity's required configuration and detection paths, not a Gemini provider integration.
 - `cursor` remains only in TerminalJumper's supported editor/terminal targeting logic; no Cursor agent provider remains.
 - `https://github.com/simibac/ConfettiSwiftUI.git` remains as the sole GitHub package dependency and is unrelated to upstream identity.
@@ -92,5 +92,5 @@ The corresponding Codex hooks, Gemini/AntiGravity hooks, and OpenCode JSONC file
 
 ## Durable project notes
 
-- Complete checkpoint: `/Users/purpleorca/Documents/PURPLE-VAULT/PROJECTS/ACTIVE/CAESURA-ISLAND/CHECKPOINT-2026-08-10.md`
-- Research and 30-point roadmap: `/Users/purpleorca/Documents/PURPLE-VAULT/PROJECTS/ACTIVE/CAESURA-ISLAND/RESEARCH-ROADMAP-2026-08-10.md`
+- Complete checkpoint: `/Users/purpleorca/Documents/PURPLE-VAULT/PROJECTS/ACTIVE/Aegis/CHECKPOINT-2026-08-10.md`
+- Research and 30-point roadmap: `/Users/purpleorca/Documents/PURPLE-VAULT/PROJECTS/ACTIVE/Aegis/RESEARCH-ROADMAP-2026-08-10.md`

@@ -27,9 +27,9 @@ One accepted canonical `BridgeMessage` must commit at most one session-dictionar
 
 In scope:
 
-- `Sources/CaesuraIsland/Session/SessionStore.swift`
-- `Sources/CaesuraIsland/Session/Session.swift` only if a focused mutation helper requires it
-- New/extended lifecycle and publication tests under `Tests/CaesuraIslandTests/`
+- `Sources/Aegis/Session/SessionStore.swift`
+- `Sources/Aegis/Session/Session.swift` only if a focused mutation helper requires it
+- New/extended lifecycle and publication tests under `Tests/AegisTests/`
 
 Out of scope:
 

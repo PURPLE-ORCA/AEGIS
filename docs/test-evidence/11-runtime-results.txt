@@ -1,4 +1,4 @@
-CAESURA-ISLAND runtime test log
+Aegis runtime test log
 Date: 2026-08-10 (Africa/Casablanca)
 
 PASS — Hermes live status

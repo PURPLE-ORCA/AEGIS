@@ -8,7 +8,7 @@ Baseline commit: `c9450ce`
 
 The bridge fallback readers use `String(contentsOfFile:)` and `components(separatedBy:)` to find one recent JSONL record. The current largest Codex transcript is 163,623,814 bytes. A plan-mode Stop can therefore read, decode, split, and retain several full-file representations before emitting the completion event.
 
-Current pattern in `Sources/CaesuraIslandBridge/main.swift:332-350`:
+Current pattern in `Sources/AegisBridge/main.swift:332-350`:
 
 ```swift
 guard let data = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
@@ -27,8 +27,8 @@ Read JSONL backward in bounded chunks, parse complete lines newest-first, and st
 
 In scope:
 
-- `Sources/CaesuraIslandBridge/main.swift`
-- A focused reusable tail-reader file under `Sources/CaesuraIslandBridge/`
+- `Sources/AegisBridge/main.swift`
+- A focused reusable tail-reader file under `Sources/AegisBridge/`
 - `Package.swift` only if a small bridge-support target is required for tests
 - New bridge tail-reader tests
 
@@ -55,7 +55,7 @@ Out of scope:
 4. Reimplement `codexAssistantFromTranscript`, `agUserRequestFromTranscript`, and `agAssistantFromTranscript` on the shared reader. Preserve all existing role/type/source checks, XML wrapper stripping, whitespace trimming, and output caps.
 5. Keep scanning until a match or start-of-file. Memory must remain bounded even when the desired record is far from EOF. Do not impose an undocumented byte cap that changes correctness.
 6. Keep `codexTranscriptPath` behavior unchanged in this plan; recursive path lookup is lower cost than full transcript loading and can be optimized independently later.
-7. If executable-target code cannot be imported by tests, add the smallest possible `CaesuraIslandBridgeSupport` library target containing only the reader and parsers. Do not move the whole bridge or introduce a new protocol layer.
+7. If executable-target code cannot be imported by tests, add the smallest possible `AegisBridgeSupport` library target containing only the reader and parsers. Do not move the whole bridge or introduce a new protocol layer.
 
 Run the focused tests after extraction and again after all three migrations, followed by the shared verification protocol.
 

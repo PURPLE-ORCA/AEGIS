@@ -4,10 +4,10 @@ These plans were written against commit `c9450ce` after a performance-only audit
 
 The working tree already contained an uncommitted finished-card sizing change in these files when the plans were written:
 
-- `Sources/CaesuraIsland/Notch/NotchContentView.swift`
-- `Sources/CaesuraIsland/Notch/NotchViewModel.swift`
-- `Sources/CaesuraIsland/Notch/Views/FinishedView.swift`
-- `Tests/CaesuraIslandTests/FinishedMessagePresentationTests.swift`
+- `Sources/Aegis/Notch/NotchContentView.swift`
+- `Sources/Aegis/Notch/NotchViewModel.swift`
+- `Sources/Aegis/Notch/Views/FinishedView.swift`
+- `Tests/AegisTests/FinishedMessagePresentationTests.swift`
 
 Executors must preserve those changes and must not stage, revert, or rewrite them unless a later user instruction explicitly widens scope.
 
@@ -79,21 +79,21 @@ swift test
 swift build -c release
 git diff --check
 ./scripts/build-app.sh
-codesign --verify --deep --strict build/CAESURA-ISLAND.app
+codesign --verify --deep --strict build/Aegis.app
 ```
 
 For runtime-affecting plans, relaunch the exact workspace bundle and verify its PID before measuring:
 
 ```bash
-open -n "$PWD/build/CAESURA-ISLAND.app"
-pgrep -f "$PWD/build/CAESURA-ISLAND.app/Contents/MacOS/CaesuraIsland"
+open -n "$PWD/build/Aegis.app"
+pgrep -f "$PWD/build/Aegis.app/Contents/MacOS/Aegis"
 ./scripts/measure-performance.sh 30
 ```
 
 Record the raw before and after output in the implementation handoff. Do not compare a debug executable with a release app bundle, different active-session counts, a different display configuration, or different sound settings. For call-stack verification, use:
 
 ```bash
-pid=$(pgrep -f "$PWD/build/CAESURA-ISLAND.app/Contents/MacOS/CaesuraIsland" | head -1)
+pid=$(pgrep -f "$PWD/build/Aegis.app/Contents/MacOS/Aegis" | head -1)
 sample "$pid" 5 1
 ```
 

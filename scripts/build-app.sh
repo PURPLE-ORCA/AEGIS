@@ -5,7 +5,7 @@ VERSION="${1:-0.1.0}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-echo "==> Building CAESURA-ISLAND release binary (v$VERSION)"
+echo "==> Building Aegis release binary (v$VERSION)"
 swift build -c release
 
 echo "==> Creating app icon"
@@ -23,11 +23,11 @@ done
 iconutil -c icns build/AppIcon.iconset -o build/AppIcon.icns
 
 echo "==> Assembling app bundle"
-APP="build/CAESURA-ISLAND.app"
+APP="build/Aegis.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
-cp .build/release/CaesuraIsland "$APP/Contents/MacOS/CaesuraIsland"
-cp .build/release/CaesuraIslandBridge "$APP/Contents/Helpers/CaesuraIslandBridge"
+cp .build/release/Aegis "$APP/Contents/MacOS/Aegis"
+cp .build/release/AegisBridge "$APP/Contents/Helpers/AegisBridge"
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 if [ -d Resources/cli-icons ]; then
@@ -44,13 +44,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>CaesuraIsland</string>
+    <string>Aegis</string>
     <key>CFBundleIdentifier</key>
-    <string>dev.caesura.island</string>
+    <string>dev.aegis.app</string>
     <key>CFBundleDisplayName</key>
-    <string>CAESURA-ISLAND</string>
+    <string>Aegis</string>
     <key>CFBundleName</key>
-    <string>CAESURA-ISLAND</string>
+    <string>Aegis</string>
     <key>CFBundleVersion</key>
     <string>$VERSION</string>
     <key>CFBundleShortVersionString</key>
@@ -58,9 +58,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSUIElement</key>
     <true/>
     <key>NSAppleEventsUsageDescription</key>
-    <string>CAESURA-ISLAND uses System Events to focus the exact Hermes session you select.</string>
+    <string>Aegis uses System Events to focus the exact Hermes session you select.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>CAESURA-ISLAND records only while you hold the Push-to-Talk shortcut, then hands your request to Hermes.</string>
+    <string>Aegis records only while you hold the Push-to-Talk shortcut, then hands your request to Hermes.</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>

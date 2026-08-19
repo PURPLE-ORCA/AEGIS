@@ -1,20 +1,20 @@
-# CAESURA-ISLAND Engineering Guide
+# Aegis Engineering Guide
 
-CAESURA-ISLAND is a native macOS notch app for monitoring four AI coding agents: Codex, Hermes, OpenCode, and AntiGravity. It is written in Swift 5.9+ with SwiftUI and AppKit, targets macOS 14+, and builds with Swift Package Manager.
+Aegis is a native macOS notch app for monitoring four AI coding agents: Codex, Hermes, OpenCode, and AntiGravity. It is written in Swift 5.9+ with SwiftUI and AppKit, targets macOS 14+, and builds with Swift Package Manager.
 
 ## Architecture
 
 ```text
 agent hook
-  -> ~/.caesura-island/bin/caesura-island-<agent>-bridge
-  -> CaesuraIslandBridge --source <agent>
-  -> /tmp/caesura-island.sock
+  -> ~/.aegis/bin/aegis-<agent>-bridge
+  -> AegisBridge --source <agent>
+  -> /tmp/aegis.sock
   -> SocketServer
   -> SessionStore
   -> NotchWindowController / SwiftUI views
 ```
 
-The app target is `CaesuraIsland`. The bridge target is `CaesuraIslandBridge`. On launch, `CodexInstaller` and the descriptor-driven `ProviderInstaller` write provider launchers under `~/.caesura-island/bin` and merge managed hook entries into detected configurations. Each launcher resolves the bridge embedded in the current app bundle before trying installed-app and development paths.
+The app target is `Aegis`. The bridge target is `AegisBridge`. On launch, `CodexInstaller` and the descriptor-driven `ProviderInstaller` write provider launchers under `~/.aegis/bin` and merge managed hook entries into detected configurations. Each launcher resolves the bridge embedded in the current app bundle before trying installed-app and development paths.
 
 Do not launch the app in an environment where provider configs must remain untouched. First launch may install hooks.
 
@@ -24,10 +24,10 @@ Do not launch the app in an environment where provider configs must remain untou
 swift build
 swift build -c release
 ./scripts/build-app.sh
-open build/CAESURA-ISLAND.app
+open build/Aegis.app
 ```
 
-`scripts/build-app.sh` compiles the release products and assembles a runnable app bundle at `build/CAESURA-ISLAND.app`.
+`scripts/build-app.sh` compiles the release products and assembles a runnable app bundle at `build/Aegis.app`.
 
 ## Provider source of truth
 
@@ -42,7 +42,7 @@ Each provider owns a display name, accent color, mascot palette, mascot shape, a
 
 ## Bridge protocol
 
-Each hook invokes `CaesuraIslandBridge`, which reads JSON from stdin, stamps the provider source, captures its parent PID and terminal environment, normalizes the event, and sends one newline-delimited JSON message over the Unix socket.
+Each hook invokes `AegisBridge`, which reads JSON from stdin, stamps the provider source, captures its parent PID and terminal environment, normalizes the event, and sends one newline-delimited JSON message over the Unix socket.
 
 The canonical events are:
 
@@ -80,28 +80,28 @@ Hermes hooks are merged into `~/.hermes/config.yaml`. Preserve existing YAML con
 
 The bridge strips terminal control sequences, translates consent events into permission requests, and reshapes `clarify` payloads into the canonical question structure. Hermes question answers remain in Hermes; the notch jumps to the originating terminal or app.
 
-Strict approval is opt-in and mirrored to `~/.caesura-island/config.json` so the bridge can read it without attaching to the app process.
+Strict approval is opt-in and mirrored to `~/.aegis/config.json` so the bridge can read it without attaching to the app process.
 
 ### OpenCode
 
-The installer writes the CAESURA-ISLAND plugin under `~/.config/opencode/plugins/` and registers it in `~/.config/opencode/opencode.json` without discarding unrelated plugins.
+The installer writes the Aegis plugin under `~/.config/opencode/plugins/` and registers it in `~/.config/opencode/opencode.json` without discarding unrelated plugins.
 
 The plugin translates OpenCode lifecycle events, `permission.asked`, and question events into canonical bridge messages. It applies the bridge response through OpenCode's local API. Preserve the plugin's session, permission, and question identifiers.
 
 ### AntiGravity
 
-The installer merges a named `caesura-island` hook group into `~/.gemini/config/hooks.json`. It only installs when AntiGravity is detected under `~/.gemini/antigravity`. AntiGravity must be restarted after hook changes because its daemon caches configuration.
+The installer merges a named `aegis` hook group into `~/.gemini/config/hooks.json`. It only installs when AntiGravity is detected under `~/.gemini/antigravity`. AntiGravity must be restarted after hook changes because its daemon caches configuration.
 
 AntiGravity emits limited hook payloads. The bridge reads its `transcript.jsonl` to recover the latest user request and model planner response. Its `PreToolUse` event can become a blocking permission request when strict approval is enabled, and the canonical decision is translated back into AntiGravity's native response.
 
 ## Installer guarantees
 
-Managed entries contain the marker `# caesura-island-managed` or the equivalent structured `caesura-island` key. Installer changes must be additive:
+Managed entries contain the marker `# aegis-managed` or the equivalent structured `aegis` key. Installer changes must be additive:
 
 - Preserve foreign hooks and unrelated configuration.
 - Create a backup before rewriting an existing config.
 - Use atomic replacement where implemented.
-- Keep launcher names under `~/.caesura-island/bin`.
+- Keep launcher names under `~/.aegis/bin`.
 - Keep socket and config paths centralized; do not introduce legacy path fallbacks.
 
 The retained installer formats are `hermesYAML`, `opencodePlugin`, and `antigravityJSON`, plus the dedicated Codex installer.
@@ -136,7 +136,7 @@ Themes may change chrome but must preserve semantic status and action colors. Ma
 
 ## Logging and state
 
-Runtime state is under `~/.caesura-island`:
+Runtime state is under `~/.aegis`:
 
 - `cache/rl.json`
 - `debug.log`
@@ -144,7 +144,7 @@ Runtime state is under `~/.caesura-island`:
 - `config.json`
 - `bin/`
 
-The app bundle identifier and UserDefaults domain are `dev.caesura.island`. The sole socket path is `/tmp/caesura-island.sock`.
+The app bundle identifier and UserDefaults domain are `dev.aegis.app`. The sole socket path is `/tmp/aegis.sock`.
 
 ## Change discipline
 

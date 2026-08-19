@@ -8,7 +8,7 @@ Baseline commit: `c9450ce`
 
 The logger owns a utility queue and a reusable file handle, but it creates a localized timestamp before dispatching to that queue. Watcher messages call `Log.info` from the main actor. A runtime sample captured ICU/`NSDateFormatter` construction inside `CodexDesktopSessionWatcher.emit` → `AppDelegate` → `Log.enqueue` on the main thread.
 
-Current code in `Sources/CaesuraIsland/Utilities/Logger.swift:28-37`:
+Current code in `Sources/Aegis/Utilities/Logger.swift:28-37`:
 
 ```swift
 let timestamp = DateFormatter.localizedString(
@@ -28,8 +28,8 @@ Calling `Log.info` or `Log.error` must do only bounded string capture and asynch
 
 In scope:
 
-- `Sources/CaesuraIsland/Utilities/Logger.swift`
-- `Tests/CaesuraIslandTests/FileLogWriterTests.swift` or a new focused logger test file
+- `Sources/Aegis/Utilities/Logger.swift`
+- `Tests/AegisTests/FileLogWriterTests.swift` or a new focused logger test file
 
 Out of scope:
 
@@ -80,7 +80,7 @@ Runtime gate:
 2. Capture `sample <pid> 5 1`.
 3. Search the sample for `NSDateFormatter`, `CFDateFormatter`, and ICU date formatting beneath a main-thread watcher/AppDelegate stack.
 
-After implementation, there must be no date-formatting stack beneath the main event path. Formatter work on `com.caesura-island.logger` is acceptable.
+After implementation, there must be no date-formatting stack beneath the main event path. Formatter work on `com.aegis.logger` is acceptable.
 
 ## Done criteria
 

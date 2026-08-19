@@ -2,18 +2,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "CaesuraIsland",
+    name: "Aegis",
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/simibac/ConfettiSwiftUI.git", from: "1.0.0"),
     ],
     targets: [
         .executableTarget(
-            name: "CaesuraIsland",
+            name: "Aegis",
             dependencies: [
                 .product(name: "ConfettiSwiftUI", package: "ConfettiSwiftUI"),
             ],
-            path: "Sources/CaesuraIsland",
+            path: "Sources/Aegis",
             resources: [
                 .copy("../../Resources/cli-icons"),
                 .copy("../../Resources/branding"),
@@ -26,18 +26,18 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "CaesuraIslandBridge",
-            dependencies: ["CaesuraIslandBridgeSupport"],
-            path: "Sources/CaesuraIslandBridge"
+            name: "AegisBridge",
+            dependencies: ["AegisBridgeSupport"],
+            path: "Sources/AegisBridge"
         ),
         .target(
-            name: "CaesuraIslandBridgeSupport",
-            path: "Sources/CaesuraIslandBridgeSupport"
+            name: "AegisBridgeSupport",
+            path: "Sources/AegisBridgeSupport"
         ),
         .testTarget(
-            name: "CaesuraIslandTests",
-            dependencies: ["CaesuraIsland", "CaesuraIslandBridgeSupport"],
-            path: "Tests/CaesuraIslandTests"
+            name: "AegisTests",
+            dependencies: ["Aegis", "AegisBridgeSupport"],
+            path: "Tests/AegisTests"
         ),
     ]
 )
