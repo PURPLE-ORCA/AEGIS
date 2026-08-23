@@ -94,14 +94,6 @@ final class NotchWindowController: NSWindowController {
             }
             .store(in: &cancellables)
 
-        viewModel.$dynamicExpandedHeight
-            .dropFirst()
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.repositionExpandedContentWindow()
-            }
-            .store(in: &cancellables)
-
         reconcileWindowPresence(state: viewModel.state)
         panel.alphaValue = 1
 
@@ -204,28 +196,6 @@ final class NotchWindowController: NSWindowController {
             animationDisplayLink = nil
             panel.orderOut(nil)
         }
-    }
-
-    /// The expanded session list already reports its interpolated SwiftUI
-    /// height while a card opens or closes. Follow that presentation height
-    /// directly; starting another tween here makes the panel chase the card
-    /// and restart on every preference update.
-    private func repositionExpandedContentWindow() {
-        guard let panel = window else { return }
-        animationDisplayLink?.invalidate()
-        animationDisplayLink = nil
-
-        let target = viewModel.currentSize
-        let screen = ScreenDetector.notchScreen.frame
-        panel.setFrame(
-            NSRect(
-                x: screen.midX - target.width / 2,
-                y: screen.maxY - target.height,
-                width: target.width,
-                height: target.height
-            ),
-            display: false
-        )
     }
 
     private func repositionWindow() {

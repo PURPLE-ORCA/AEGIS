@@ -2,33 +2,33 @@ import XCTest
 @testable import Aegis
 
 final class SessionCardPresentationTests: XCTestCase {
-    func testThinkingPreviewDescribesCurrentTask() {
+    func testCompactTitleUsesSessionNameInsteadOfCurrentTask() {
         var session = makeSession(status: .thinking)
         session.lastUserMessage = "Make the session cards compact"
 
         XCTAssertEqual(
             SessionCardPresentation.preview(for: session),
-            "Working on Make the session cards compact"
+            "project"
         )
     }
 
-    func testThinkingPreviewFallsBackToSessionTitle() {
+    func testThinkingPreviewUsesSessionTitle() {
         var session = makeSession(status: .thinking)
         session.sessionTitle = "Compact session cards"
 
         XCTAssertEqual(
             SessionCardPresentation.preview(for: session),
-            "Working on Compact session cards"
+            "Compact session cards"
         )
     }
 
-    func testToolPreviewNamesCurrentTool() {
+    func testToolPreviewUsesSessionName() {
         var session = makeSession(status: .toolUse)
         session.currentTool = "Swift compiler"
 
         XCTAssertEqual(
             SessionCardPresentation.preview(for: session),
-            "Using Swift compiler"
+            "project"
         )
     }
 
@@ -68,6 +68,30 @@ final class SessionCardPresentationTests: XCTestCase {
 
         XCTAssertEqual(preview.count, 12)
         XCTAssertTrue(preview.hasSuffix("…"))
+    }
+
+    func testCollapsedDetailPresentationKeepsContentMountedAtZeroHeight() {
+        let presentation = SessionCardDetailPresentation.resolve(
+            measuredHeight: 96,
+            isExpanded: false
+        )
+
+        XCTAssertTrue(presentation.keepsContentMounted)
+        XCTAssertEqual(presentation.height, 0)
+        XCTAssertEqual(presentation.opacity, 0)
+    }
+
+    func testRuntimeUsesActiveTurnStartAndWholeSecondFormatting() {
+        var session = makeSession(status: .thinking)
+        session.activeStartedAt = Date(timeIntervalSince1970: 1_000)
+
+        XCTAssertEqual(
+            SessionCardPresentation.runtimeText(
+                for: session,
+                at: Date(timeIntervalSince1970: 1_125)
+            ),
+            "2m 5s"
+        )
     }
 
     private func makeSession(status: SessionStatus) -> Session {

@@ -21,26 +21,10 @@ enum SessionMessagePresentation {
 enum SessionCardPresentation {
     static func preview(for session: Session, maximumLength: Int = 280) -> String {
         switch session.status {
-        case .thinking:
-            return previewTask(
-                for: session,
-                prefix: "Working on",
-                fallback: "Working on \(session.displayName)",
-                maximumLength: maximumLength
-            )
-        case .toolUse:
-            if let tool = session.currentTool?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !tool.isEmpty {
-                return SessionMessagePresentation.preview(
-                    "Using \(tool)",
-                    fallback: "Working on \(session.displayName)",
-                    maximumLength: maximumLength
-                )
-            }
-            return previewTask(
-                for: session,
-                prefix: "Working on",
-                fallback: "Working on \(session.displayName)",
+        case .thinking, .toolUse:
+            return SessionMessagePresentation.preview(
+                session.displayName,
+                fallback: session.projectName,
                 maximumLength: maximumLength
             )
         case .waitingPermission:
@@ -67,23 +51,22 @@ enum SessionCardPresentation {
         }
     }
 
-    private static func previewTask(
-        for session: Session,
-        prefix: String,
-        fallback: String,
-        maximumLength: Int
-    ) -> String {
-        let message = preferredTask(for: session).map { "\(prefix) \($0)" }
-        return SessionMessagePresentation.preview(
-            message,
-            fallback: fallback,
-            maximumLength: maximumLength
-        )
-    }
-
     private static func preferredTask(for session: Session) -> String? {
         [session.lastUserMessage, session.firstPrompt]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first(where: { !$0.isEmpty })
+    }
+
+    static func runtimeText(for session: Session, at now: Date = Date()) -> String {
+        let start = session.activeStartedAt ?? session.startedAt
+        let elapsed = max(0, Int(now.timeIntervalSince(start)))
+
+        if elapsed < 60 {
+            return "\(elapsed)s"
+        }
+        if elapsed < 3_600 {
+            return "\(elapsed / 60)m \(elapsed % 60)s"
+        }
+        return "\(elapsed / 3_600)h \((elapsed % 3_600) / 60)m"
     }
 }

@@ -120,8 +120,7 @@ struct NotchContentView: View {
                 rateLimitStore: rateLimitStore,
                 settingsStore: settingsStore,
                 onCollapse: { viewModel.collapse() },
-                onOpenSettings: onOpenSettings,
-                onContentHeightChange: { viewModel.updateExpandedContentHeight($0) }
+                onOpenSettings: onOpenSettings
             )
 
         case .finished(let sessionId):

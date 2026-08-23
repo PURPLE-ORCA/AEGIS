@@ -8,21 +8,22 @@ struct SessionCardView: View {
 
     @State private var isHovering = false
     @State private var hoverExpansionTask: Task<Void, Never>?
+    @State private var detailContentHeight: CGFloat = 0
 
     private var showsDetails: Bool {
         isHovering
+    }
+
+    private var detailPresentation: SessionCardDetailPresentation {
+        .resolve(measuredHeight: detailContentHeight, isExpanded: showsDetails)
     }
 
     private var isActive: Bool {
         session.status == .thinking || session.status == .toolUse
     }
 
-    private func morphAnimation(expanding: Bool) -> Animation {
-        if reduceMotion {
-            return NotchMotion.reducedSessionCard
-        }
-
-        return expanding ? NotchMotion.sessionCard : NotchMotion.sessionCardCollapse
+    private var morphAnimation: Animation {
+        reduceMotion ? NotchMotion.reducedSessionCard : NotchMotion.sessionCardMorph
     }
 
     private var statusAccent: Color {
@@ -59,11 +60,21 @@ struct SessionCardView: View {
             VStack(alignment: .leading, spacing: 0) {
                 compactMessage
 
-                if showsDetails {
+                if detailPresentation.keepsContentMounted {
                     detailContent
                         .fixedSize(horizontal: false, vertical: true)
-                        .transition(.asymmetric(insertion: .opacity, removal: .identity))
-                        .allowsHitTesting(false)
+                        .background {
+                            GeometryReader { geometry in
+                                Color.clear.preference(
+                                    key: SessionCardDetailHeightKey.self,
+                                    value: geometry.size.height
+                                )
+                            }
+                        }
+                        .frame(height: detailPresentation.height, alignment: .top)
+                        .opacity(detailPresentation.opacity)
+                        .clipped()
+                        .allowsHitTesting(showsDetails)
                 }
             }
             .clipped()
@@ -75,6 +86,10 @@ struct SessionCardView: View {
         .accessibilityLabel("Open \(session.provider.displayName) session \(session.displayName)")
         .accessibilityValue(SessionCardPresentation.preview(for: session))
         .accessibilityHint("Opens this session in its app or terminal when activated.")
+        .onPreferenceChange(SessionCardDetailHeightKey.self) { height in
+            guard height > 0, abs(detailContentHeight - height) > 0.5 else { return }
+            detailContentHeight = height
+        }
         .onHover { hovering in
             hoverExpansionTask?.cancel()
             hoverExpansionTask = nil
@@ -84,13 +99,13 @@ struct SessionCardView: View {
                     try? await Task.sleep(for: .seconds(NotchMotion.sessionCardHoverDelay))
                     guard !Task.isCancelled else { return }
 
-                    withAnimation(morphAnimation(expanding: true)) {
+                    withAnimation(morphAnimation) {
                         isHovering = true
                     }
                     hoverExpansionTask = nil
                 }
             } else {
-                withAnimation(morphAnimation(expanding: false)) {
+                withAnimation(morphAnimation) {
                     isHovering = false
                 }
             }
@@ -111,13 +126,29 @@ struct SessionCardView: View {
                 .font(theme.font(size: 12, weight: .medium))
                 .foregroundColor(theme.cardForeground.opacity(0.90))
                 .multilineTextAlignment(.leading)
-                .lineLimit(2)
+                .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            if isActive {
+                TimelineView(.periodic(from: .now, by: 1.0)) { context in
+                    runtimeLabel(at: context.date)
+                }
+            } else {
+                runtimeLabel(at: Date())
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+    }
+
+    private func runtimeLabel(at date: Date) -> some View {
+        Text(SessionCardPresentation.runtimeText(for: session, at: date))
+            .font(theme.font(size: 10, weight: .semibold))
+            .foregroundColor(theme.cardForeground.opacity(0.48))
+            .monospacedDigit()
+            .lineLimit(1)
     }
 
     private var detailContent: some View {
@@ -306,6 +337,14 @@ struct SessionCardView: View {
         .padding(.horizontal, 5)
         .padding(.vertical, 2)
         .notchPill(theme, fill: theme.chipFill(.white.opacity(0.06)), base: 4)
+    }
+}
+
+private struct SessionCardDetailHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

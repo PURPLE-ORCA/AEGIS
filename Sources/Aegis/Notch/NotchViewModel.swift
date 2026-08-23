@@ -45,11 +45,9 @@ final class NotchViewModel: ObservableObject {
         let height = ScreenDetector.notchHeight
         return NSSize(width: width, height: height)
     }
-    // Expanded session list grows to its measured content, capped at the old
-    // three-card viewport so larger workloads keep scrolling instead of taking
-    // over the screen.
+    // The expanded panel stays fixed while cards morph inside its scroll view.
+    // A stable native frame keeps pointer tracking continuous during hover.
     static let expandedSize = NSSize(width: 600, height: SessionListWindowLayout.maximumHeight)
-    static let expandedMinimumHeight: CGFloat = SessionListWindowLayout.minimumHeight
     // Permission: wide enough for details
     static let permissionSize = NSSize(width: 600, height: 380)
     // Question: taller for multiple questions
@@ -61,7 +59,6 @@ final class NotchViewModel: ObservableObject {
     }
 
     // Dynamic content heights — measured by their views as content changes.
-    @Published var dynamicExpandedHeight: CGFloat? = nil
     @Published var dynamicPermissionHeight: CGFloat? = nil
     @Published var dynamicFinishedHeight: CGFloat? = nil
 
@@ -70,10 +67,7 @@ final class NotchViewModel: ObservableObject {
         case .collapsed:
             return Self.collapsedSize
         case .expanded:
-            return NSSize(
-                width: Self.expandedSize.width,
-                height: dynamicExpandedHeight ?? Self.expandedMinimumHeight
-            )
+            return Self.expandedSize
         case .finished:
             return NSSize(width: 600, height: dynamicFinishedHeight ?? Self.finishedSize.height)
         case .permission:
@@ -140,7 +134,6 @@ final class NotchViewModel: ObservableObject {
 
     func expand(holdSeconds: Double? = nil) {
         guard state == .collapsed else { return }
-        dynamicExpandedHeight = Self.expandedMinimumHeight
         state = .expanded
         scheduleAutoCollapse(delay: holdSeconds ?? 0.6)
     }
@@ -148,7 +141,6 @@ final class NotchViewModel: ObservableObject {
     func collapse() {
         guard state != .collapsed else { return }
         state = .collapsed
-        dynamicExpandedHeight = nil
         finishedSessionSnapshot = nil
         finishedAutoCollapseDeadline = nil
         autoCollapseTask?.cancel()
@@ -164,12 +156,6 @@ final class NotchViewModel: ObservableObject {
 
     func cancelAutoCollapse() {
         autoCollapseTask?.cancel()
-    }
-
-    func updateExpandedContentHeight(_ height: CGFloat) {
-        let fitted = min(max(height, Self.expandedMinimumHeight), Self.expandedSize.height)
-        guard abs((dynamicExpandedHeight ?? Self.expandedMinimumHeight) - fitted) > 0.5 else { return }
-        dynamicExpandedHeight = fitted
     }
 
     func updateFinishedContentHeight(_ height: CGFloat) {

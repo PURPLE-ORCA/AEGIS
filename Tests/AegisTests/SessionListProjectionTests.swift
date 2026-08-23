@@ -28,14 +28,14 @@ final class SessionListProjectionTests: XCTestCase {
         XCTAssertEqual(projection.rateLimitProvider, .codex)
     }
 
-    func testSessionListWindowFitsSmallContentAndCapsLargeContent() {
+    func testExpandedSessionListUsesStableViewportHeight() {
         XCTAssertEqual(
-            SessionListWindowLayout.fittedHeight(chromeHeight: 44, contentHeight: 80),
-            124
+            SessionListWindowLayout.viewportHeight(chromeHeight: 44),
+            SessionListWindowLayout.maximumHeight - 44
         )
         XCTAssertEqual(
-            SessionListWindowLayout.fittedHeight(chromeHeight: 76, contentHeight: 500),
-            SessionListWindowLayout.maximumHeight
+            SessionListWindowLayout.viewportHeight(chromeHeight: 76),
+            SessionListWindowLayout.maximumHeight - 76
         )
     }
 
