@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let socketServer = SocketServer()
     private let soundEngine = SoundEngine()
     private let settingsStore = SettingsStore()
+    private let executionPowerController = AgentExecutionPowerController()
+    private let systemPowerConditionMonitor = SystemPowerConditionMonitor()
     private lazy var hermesVoiceHandoffController = HermesVoiceHandoffController(settingsStore: settingsStore)
     private let rateLimitStore = RateLimitStore()
     private let codexDesktopWatcher = CodexDesktopSessionWatcher()
@@ -42,6 +44,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.companionWindowController?.handleSessionEvent(event)
             }
             .store(in: &cancellables)
+
+        sessionStore.onExecutionEvent
+            .sink { [weak self] event in
+                self?.executionPowerController.handle(event)
+            }
+            .store(in: &cancellables)
+
+        settingsStore.$keepAwakeMode
+            .sink { [weak self] mode in
+                self?.executionPowerController.update(mode: mode)
+            }
+            .store(in: &cancellables)
+
+        systemPowerConditionMonitor.onChange = { [weak self] conditions in
+            self?.executionPowerController.update(conditions: conditions)
+        }
+        systemPowerConditionMonitor.start()
 
         // Sync sound settings
         settingsStore.$soundEnabled
@@ -134,6 +153,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        executionPowerController.stop()
+        systemPowerConditionMonitor.stop()
         codexDesktopWatcher.stop()
         hermesDesktopWatcher.stop()
         hermesVoiceHandoffController.stop()

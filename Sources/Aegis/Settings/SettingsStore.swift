@@ -44,6 +44,9 @@ final class SettingsStore: ObservableObject {
     @Published var expandOnHover: Bool {
         didSet { UserDefaults.standard.set(expandOnHover, forKey: "expandOnHover") }
     }
+    @Published var keepAwakeMode: AgentKeepAwakeMode {
+        didSet { UserDefaults.standard.set(keepAwakeMode.rawValue, forKey: "keepAwakeMode") }
+    }
     @Published var launchAtLogin: Bool {
         didSet {
             UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin")
@@ -172,6 +175,7 @@ final class SettingsStore: ObservableObject {
             "soundProfile": SoundProfile.quietGlass.rawValue,
             "autoExpandOnPermission": true,
             "expandOnHover": true,
+            "keepAwakeMode": AgentKeepAwakeMode.off.rawValue,
             "launchAtLogin": false,
             "hasCompletedOnboarding": false,
             "soundSessionStart": false,
@@ -201,6 +205,9 @@ final class SettingsStore: ObservableObject {
         }
         self.autoExpandOnPermission = defaults.bool(forKey: "autoExpandOnPermission")
         self.expandOnHover = defaults.bool(forKey: "expandOnHover")
+        self.keepAwakeMode = AgentKeepAwakeMode(
+            rawValue: defaults.string(forKey: "keepAwakeMode") ?? ""
+        ) ?? .off
         self.launchAtLogin = defaults.bool(forKey: "launchAtLogin")
         self.hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
         // Load per-event assignments, or migrate once from the old toggles

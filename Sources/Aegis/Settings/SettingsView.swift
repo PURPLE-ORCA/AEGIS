@@ -42,7 +42,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     var hero: String {
         switch self {
         case .general:
-            return "Launch behavior and notch expansion preferences."
+            return "Launch behavior, agent power, and notch expansion preferences."
         case .appearance:
             return "Choose the notch theme and ambient companion."
         case .integrations:
@@ -292,6 +292,26 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
             }
+        }
+
+        Section {
+            Picker("Keep Mac awake while agents work", selection: $settingsStore.keepAwakeMode) {
+                ForEach(AgentKeepAwakeMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+
+            Text(settingsStore.keepAwakeMode.detail)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+        } header: {
+            Text("Agent Power")
+        } footer: {
+            Text("Only system idle sleep is prevented; the display may still turn off. Battery use stops after two hours without agent progress, in Low Power Mode, or when macOS reports low battery.")
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
 
         Section {
