@@ -286,6 +286,24 @@ final class HermesDesktopSessionWatcher {
     }
 }
 
+enum HermesDesktopQueries {
+    static let activeTurnSnapshotSQL = """
+        SELECT s.id, latest.timestamp, s.last_activity_at
+        FROM sessions s
+        JOIN messages latest ON latest.id = (
+            SELECT MAX(message.id)
+            FROM messages message
+            WHERE message.session_id = s.id
+        )
+        WHERE s.source = 'desktop'
+          AND s.ended_at IS NULL
+          AND (
+              latest.role IN ('user', 'tool')
+              OR (latest.role = 'assistant' AND COALESCE(latest.finish_reason, '') != 'stop')
+          )
+        """
+}
+
 private final class HermesDesktopDatabaseWatcher {
     var onMessage: ((BridgeMessage) -> Void)?
 
@@ -532,29 +550,15 @@ private final class HermesDesktopDatabaseWatcher {
 
     private func activeTurnSnapshots() -> [ActiveTurnSnapshot]? {
         guard let database else { return nil }
-        let sql = """
-            WITH latest_messages AS (
-                SELECT m.*
-                FROM messages m
-                JOIN (
-                    SELECT session_id, MAX(id) AS id
-                    FROM messages
-                    GROUP BY session_id
-                ) latest ON latest.id = m.id
-            )
-            SELECT s.id, latest.timestamp, s.last_activity_at
-            FROM sessions s
-            JOIN latest_messages latest ON latest.session_id = s.id
-            WHERE s.source = 'desktop'
-              AND s.ended_at IS NULL
-              AND (
-                  latest.role IN ('user', 'tool')
-                  OR (latest.role = 'assistant' AND COALESCE(latest.finish_reason, '') != 'stop')
-              )
-            """
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
-        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return nil }
+        guard sqlite3_prepare_v2(
+            database,
+            HermesDesktopQueries.activeTurnSnapshotSQL,
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else { return nil }
 
         var snapshots: [ActiveTurnSnapshot] = []
         var result = sqlite3_step(statement)

@@ -54,6 +54,18 @@ enum SyntaxHighlighter {
         "typealias", "init", "deinit", "subscript", "override", "final",
     ]
 
+    private static let lineCommentRegex = makeRegex(#"//[^\n]*"#)
+    private static let hashCommentRegex = makeRegex(#"#[^\n]*"#)
+    private static let blockCommentRegex = makeRegex(#"/\*[\s\S]*?\*/"#)
+    private static let doubleQuotedStringRegex = makeRegex(#""(?:[^"\\]|\\.)*""#)
+    private static let singleQuotedStringRegex = makeRegex(#"'(?:[^'\\]|\\.)*'"#)
+    private static let backtickStringRegex = makeRegex(#"`(?:[^`\\]|\\.)*`"#)
+    private static let numberRegex = makeRegex(#"\b\d+(?:\.\d+)?\b"#)
+    private static let typeRegex = makeRegex(#"\b[A-Z][A-Za-z0-9_]*\b"#)
+    private static let keywordRegex = makeRegex(
+        "\\b(" + keywords.sorted().joined(separator: "|") + ")\\b"
+    )
+
     /// Build a syntax-highlighted AttributedString with optional line numbers.
     /// `startLine` controls the first line number shown (default 1).
     static func highlight(_ source: String, theme: Theme = .dark, withLineNumbers: Bool = true, startLine: Int = 1) -> AttributedString {
@@ -61,24 +73,23 @@ enum SyntaxHighlighter {
         out.foregroundColor = theme.plain
 
         // Comments (line + block)
-        applyRegex(#"//[^\n]*"#, to: &out, in: source, color: theme.comment)
-        applyRegex(#"#[^\n]*"#, to: &out, in: source, color: theme.comment)
-        applyRegex(#"/\*[\s\S]*?\*/"#, to: &out, in: source, color: theme.comment)
+        applyRegex(lineCommentRegex, to: &out, in: source, color: theme.comment)
+        applyRegex(hashCommentRegex, to: &out, in: source, color: theme.comment)
+        applyRegex(blockCommentRegex, to: &out, in: source, color: theme.comment)
 
         // Strings (double, single, backtick)
-        applyRegex(#""(?:[^"\\]|\\.)*""#, to: &out, in: source, color: theme.string)
-        applyRegex(#"'(?:[^'\\]|\\.)*'"#, to: &out, in: source, color: theme.string)
-        applyRegex(#"`(?:[^`\\]|\\.)*`"#, to: &out, in: source, color: theme.string)
+        applyRegex(doubleQuotedStringRegex, to: &out, in: source, color: theme.string)
+        applyRegex(singleQuotedStringRegex, to: &out, in: source, color: theme.string)
+        applyRegex(backtickStringRegex, to: &out, in: source, color: theme.string)
 
         // Numbers
-        applyRegex(#"\b\d+(?:\.\d+)?\b"#, to: &out, in: source, color: theme.number)
+        applyRegex(numberRegex, to: &out, in: source, color: theme.number)
 
         // Capitalized identifiers as types
-        applyRegex(#"\b[A-Z][A-Za-z0-9_]*\b"#, to: &out, in: source, color: theme.type)
+        applyRegex(typeRegex, to: &out, in: source, color: theme.type)
 
         // Keywords (whole-word)
-        let keywordPattern = "\\b(" + keywords.joined(separator: "|") + ")\\b"
-        applyRegex(keywordPattern, to: &out, in: source, color: theme.keyword)
+        applyRegex(keywordRegex, to: &out, in: source, color: theme.keyword)
 
         if !withLineNumbers { return out }
         return prependLineNumbers(out, source: source, theme: theme, startLine: startLine)
@@ -210,8 +221,15 @@ private extension String {
 }
 
 extension SyntaxHighlighter {
-    private static func applyRegex(_ pattern: String, to attributed: inout AttributedString, in source: String, color: Color) {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+    private static func makeRegex(_ pattern: String) -> NSRegularExpression {
+        do {
+            return try NSRegularExpression(pattern: pattern)
+        } catch {
+            preconditionFailure("Invalid built-in syntax-highlighting pattern: \(error)")
+        }
+    }
+
+    private static func applyRegex(_ regex: NSRegularExpression, to attributed: inout AttributedString, in source: String, color: Color) {
         let range = NSRange(location: 0, length: (source as NSString).length)
         let matches = regex.matches(in: source, range: range)
         for match in matches {
@@ -224,4 +242,3 @@ extension SyntaxHighlighter {
         }
     }
 }
-

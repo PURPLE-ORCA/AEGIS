@@ -344,6 +344,28 @@ final class HermesDesktopSessionWatcherTests: XCTestCase {
         XCTAssertEqual(policy.delay(after: .databaseUnavailable), 8)
     }
 
+    func testActiveTurnSnapshotQueryUsesPerSessionMessageIndex() throws {
+        let root = try makeDatabaseRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let database = try openDatabase(at: root)
+        defer { sqlite3_close(database) }
+
+        var statement: OpaquePointer?
+        let sql = "EXPLAIN QUERY PLAN \(HermesDesktopQueries.activeTurnSnapshotSQL)"
+        XCTAssertEqual(sqlite3_prepare_v2(database, sql, -1, &statement, nil), SQLITE_OK)
+        defer { sqlite3_finalize(statement) }
+
+        var planDetails: [String] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let detail = sqlite3_column_text(statement, 3) {
+                planDetails.append(String(cString: detail))
+            }
+        }
+
+        XCTAssertTrue(planDetails.contains { $0.contains("idx_messages_session_id") })
+        XCTAssertFalse(planDetails.contains { $0.contains("SCAN messages") })
+    }
+
     private func makeDatabaseRoot() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("aegis-hermes-tests-\(UUID().uuidString)", isDirectory: true)
@@ -380,6 +402,7 @@ final class HermesDesktopSessionWatcherTests: XCTestCase {
                 timestamp REAL NOT NULL
             )
             """)
+        try execute(database, "CREATE INDEX idx_messages_session_id ON messages(session_id, id)")
         return database
     }
 
