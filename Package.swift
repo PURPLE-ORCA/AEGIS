@@ -23,6 +23,7 @@ let package = Package(
             ],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
+                .linkedFramework("IOKit"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("AVFoundation"),
             ]
