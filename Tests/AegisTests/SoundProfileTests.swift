@@ -6,18 +6,18 @@ final class SoundProfileTests: XCTestCase {
     func testProfessionalProfilesHaveStableNames() {
         XCTAssertEqual(
             SoundProfile.allCases.map(\.displayName),
-            ["Quiet Glass", "Soft Relay", "Deep Signal", "Yamete Kudasai"]
+            ["Quiet Glass", "Soft Relay", "Deep Signal", "Meme"]
         )
     }
 
-    func testYameteKudasaiProfileHasReadableVoiceCues() throws {
+    func testMemeProfileHasReadableVoiceCues() throws {
         let resources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Resources/sounds/yamete-kudasai", isDirectory: true)
+            .appendingPathComponent("Resources/sounds/meme", isDirectory: true)
 
-        for name in ["yamete-kudasai", "brief-action"] {
+        for name in ["yamete-kudasai", "brief-action", "skill-issue"] {
             let file = try AVAudioFile(
                 forReading: resources.appendingPathComponent("\(name).aiff")
             )
@@ -26,13 +26,14 @@ final class SoundProfileTests: XCTestCase {
         }
     }
 
-    func testYameteKudasaiUsesBriefClipOnlyForBriefActions() {
-        let profile = SoundProfile.yameteKudasai
+    func testMemeProfileUsesEventSpecificClips() {
+        let profile = SoundProfile.meme
 
         XCTAssertEqual(profile.bundledSoundName(for: .sessionStart), "brief-action")
         XCTAssertEqual(profile.bundledSoundName(for: .toolUse), "brief-action")
+        XCTAssertEqual(profile.bundledSoundName(for: .skillIssue), "skill-issue")
 
-        for event in SoundEvent.allCases where event != .sessionStart && event != .toolUse {
+        for event in SoundEvent.allCases where ![.sessionStart, .toolUse, .skillIssue].contains(event) {
             XCTAssertEqual(profile.bundledSoundName(for: event), "yamete-kudasai", event.rawValue)
         }
     }
@@ -48,16 +49,17 @@ final class SoundProfileTests: XCTestCase {
 
         XCTAssertEqual(SoundEvent.error.cue, .failure)
         XCTAssertEqual(SoundEvent.approvalDenied.cue, .failure)
+        XCTAssertEqual(SoundEvent.skillIssue.cue, .skillIssue)
     }
 
-    func testEveryProfileGeneratesThreeDistinctBoundedCues() throws {
+    func testEveryProfileGeneratesFourDistinctBoundedCues() throws {
         for profile in SoundProfile.allCases {
             let synthesizer = SoundSynthesizer(profile: profile)
-            let buffers = try [SoundEvent.completion, .approvalNeeded, .error].map {
+            let buffers = try [SoundEvent.completion, .approvalNeeded, .error, .skillIssue].map {
                 try XCTUnwrap(synthesizer.generateSound(for: $0))
             }
 
-            XCTAssertEqual(Set(buffers.map(\.frameLength)).count, 3, profile.displayName)
+            XCTAssertEqual(Set(buffers.map(\.frameLength)).count, 4, profile.displayName)
             for buffer in buffers {
                 XCTAssertGreaterThan(buffer.frameLength, 0)
                 XCTAssertLessThanOrEqual(peakAmplitude(of: buffer), 0.24)
@@ -77,6 +79,12 @@ final class SoundProfileTests: XCTestCase {
         }
 
         XCTAssertEqual(Set(signatures).count, SoundProfile.allCases.count)
+    }
+
+    func testLegacyYameteProfileMigratesToMeme() {
+        XCTAssertEqual(SettingsStore.resolveSoundProfile(rawValue: "yamete-kudasai"), .meme)
+        XCTAssertEqual(SettingsStore.resolveSoundProfile(rawValue: "meme"), .meme)
+        XCTAssertEqual(SettingsStore.resolveSoundProfile(rawValue: "unknown"), .quietGlass)
     }
 
     private func peakAmplitude(of buffer: AVAudioPCMBuffer) -> Float {

@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import Aegis
+import AegisBridgeSupport
 
 final class CodexDesktopSessionWatcherTests: XCTestCase {
     func testExistingTranscriptStartsAtEndThenEmitsAppendedEvent() throws {
@@ -133,6 +134,42 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
         XCTAssertEqual(completionMessages.count, 2)
         XCTAssertEqual(completionMessages[0], "old answer")
         XCTAssertNil(completionMessages[1])
+    }
+
+    func testTranscriptToolOutputEmitsStructuredFailureOutcome() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transcript = root.appendingPathComponent("rollout-tool-outcome.jsonl")
+        try writeLines([
+            #"{"type":"session_meta","payload":{"id":"tool-outcome","cwd":"/tmp/project"}}"#,
+        ], to: transcript)
+
+        let watcher = CodexDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil
+        )
+        let started = expectation(description: "watcher started")
+        let received = expectation(description: "structured tool failure")
+        var outcome: ToolOutcome?
+        watcher.onMessage = { message in
+            guard message.hookEvent == "PostToolUse" else { return }
+            outcome = message.toolOutcome
+            XCTAssertEqual(message.toolName, "exec_command")
+            received.fulfill()
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started], timeout: 3)
+        defer { watcher.stop() }
+
+        try appendLines([
+            #"{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec_command","call_id":"call-1"}}"#,
+            #"{"type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"call-1","output":[{"type":"input_text","text":"{\"exit_code\":1,\"output\":\"failed\"}"}]}}"#,
+        ], to: transcript)
+        watcher.reconcileNow()
+
+        wait(for: [received], timeout: 3)
+        XCTAssertEqual(outcome, .failure)
     }
 
     func testPolicyUsesOneSecondOnlyWhileActive() {

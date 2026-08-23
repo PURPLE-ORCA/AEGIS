@@ -1,12 +1,14 @@
 import Foundation
 import Combine
+import AegisBridgeSupport
 
 enum SessionEvent {
     case sessionStarted(String)
     case sessionEnded(String)
     case statusChanged(String, SessionStatus)
     case toolStarted(String, String)
-    case toolEnded(String, String)
+    case toolEnded(String, String, ToolOutcome?)
+    case skillIssueDetected(String, String)
     case permissionRequested(String)
     case permissionResponded(String, Bool)
     case questionAsked(String)
@@ -45,6 +47,7 @@ final class SessionStore: ObservableObject {
     /// the timer fire and silently delete a freshly-recreated session with
     /// the same id (issues #8, #9, #10).
     private var pendingRemovals: [String: Task<Void, Never>] = [:]
+    private var skillIssueDetector = SkillIssueDetector()
 
     init() {
         processSweepTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
@@ -310,6 +313,7 @@ final class SessionStore: ObservableObject {
 
         switch message.hookEvent {
         case "SessionStart":
+            skillIssueDetector.reset(sessionId: sessionId)
             session.status = .idle
             // ensureSession already emitted .sessionStarted for first-time
             // creates. Suppress the redundant SessionStart-hook emit so
@@ -321,11 +325,13 @@ final class SessionStore: ObservableObject {
             }
 
         case "SessionEnd":
+            skillIssueDetector.reset(sessionId: sessionId)
             session.status = .completed
             effects.append(.event(.sessionEnded(sessionId)))
             effects.append(.scheduleRemoval(sessionId: sessionId, delay: 5.0))
 
         case "UserPromptSubmit":
+            skillIssueDetector.reset(sessionId: sessionId)
             let userMsg = message.userMessage ?? message.toolInput
             if let msg = userMsg {
                 session.lastUserMessage = msg
@@ -377,7 +383,15 @@ final class SessionStore: ObservableObject {
             session.currentTool = nil
             session.lastToolDurationMs = message.durationMs
             // Don't update lastAssistantMessage from tool output
-            effects.append(.event(.toolEnded(sessionId, toolName)))
+            effects.append(.event(.toolEnded(sessionId, toolName, message.toolOutcome)))
+            if skillIssueDetector.record(
+                sessionId: sessionId,
+                toolName: toolName,
+                outcome: message.toolOutcome,
+                at: now
+            ) {
+                effects.append(.event(.skillIssueDetected(sessionId, toolName)))
+            }
 
         case "PermissionRequest":
             let toolName = message.toolName ?? "unknown"
@@ -479,7 +493,7 @@ final class SessionStore: ObservableObject {
 
         case "SubagentStop":
             session.currentTool = nil
-            effects.append(.event(.toolEnded(sessionId, "Agent")))
+            effects.append(.event(.toolEnded(sessionId, "Agent", nil)))
 
         case "PreCompact":
             break

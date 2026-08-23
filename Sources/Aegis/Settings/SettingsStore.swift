@@ -194,9 +194,11 @@ final class SettingsStore: ObservableObject {
         ) ?? .newSession
         self.soundEnabled = defaults.bool(forKey: "soundEnabled")
         self.soundVolume = defaults.float(forKey: "soundVolume")
-        self.soundProfile = SoundProfile(
-            rawValue: defaults.string(forKey: "soundProfile") ?? ""
-        ) ?? .quietGlass
+        let storedSoundProfile = defaults.string(forKey: "soundProfile")
+        self.soundProfile = Self.resolveSoundProfile(rawValue: storedSoundProfile)
+        if storedSoundProfile == "yamete-kudasai" {
+            defaults.set(SoundProfile.meme.rawValue, forKey: "soundProfile")
+        }
         self.autoExpandOnPermission = defaults.bool(forKey: "autoExpandOnPermission")
         self.expandOnHover = defaults.bool(forKey: "expandOnHover")
         self.launchAtLogin = defaults.bool(forKey: "launchAtLogin")
@@ -254,6 +256,11 @@ final class SettingsStore: ObservableObject {
         // Mirror to the bridge config on launch so it reflects the saved state.
         writeBridgeConfig()
         if launchAtLogin { updateLoginItem() }
+    }
+
+    static func resolveSoundProfile(rawValue: String?) -> SoundProfile {
+        if rawValue == "yamete-kudasai" { return .meme }
+        return SoundProfile(rawValue: rawValue ?? "") ?? .quietGlass
     }
 
     private static func migrateLegacyInstallationIfNeeded() {

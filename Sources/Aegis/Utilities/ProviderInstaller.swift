@@ -571,7 +571,8 @@ export default {
               cwd, tool_name: toolName, tool_input: p.part.state?.input || {} }));
           } else if (st === "completed" || st === "error") {
             send("PostToolUse", base(p.part.sessionID, { hook_event_name: "PostToolUse",
-              cwd, tool_name: toolName }));
+              cwd, tool_name: toolName,
+              tool_outcome: st === "error" ? "failure" : "success" }));
           }
           return;
         }

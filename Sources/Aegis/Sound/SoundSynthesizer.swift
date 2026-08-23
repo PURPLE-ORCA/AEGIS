@@ -5,7 +5,7 @@ enum SoundProfile: String, CaseIterable, Identifiable, Hashable {
     case quietGlass = "quiet-glass"
     case softRelay = "soft-relay"
     case deepSignal = "deep-signal"
-    case yameteKudasai = "yamete-kudasai"
+    case meme
 
     var id: String { rawValue }
 
@@ -14,7 +14,7 @@ enum SoundProfile: String, CaseIterable, Identifiable, Hashable {
         case .quietGlass: return "Quiet Glass"
         case .softRelay: return "Soft Relay"
         case .deepSignal: return "Deep Signal"
-        case .yameteKudasai: return "Yamete Kudasai"
+        case .meme: return "Meme"
         }
     }
 
@@ -26,26 +26,28 @@ enum SoundProfile: String, CaseIterable, Identifiable, Hashable {
             return "Warm, rounded cues designed for long work sessions."
         case .deepSignal:
             return "Low, deliberate cues with a measured finish."
-        case .yameteKudasai:
+        case .meme:
             return "Unhinged anime reactions for every agent state."
         }
     }
 
     var bundledSoundSubdirectory: String? {
         switch self {
-        case .yameteKudasai:
-            return "sounds/yamete-kudasai"
+        case .meme:
+            return "sounds/meme"
         case .quietGlass, .softRelay, .deepSignal:
             return nil
         }
     }
 
     func bundledSoundName(for event: SoundEvent) -> String? {
-        guard self == .yameteKudasai else { return nil }
+        guard self == .meme else { return nil }
 
         switch event {
         case .sessionStart, .toolUse:
             return "brief-action"
+        case .skillIssue:
+            return "skill-issue"
         case .sessionEnd, .completion, .error,
              .approvalNeeded, .approvalGranted, .approvalDenied:
             return "yamete-kudasai"
@@ -54,8 +56,8 @@ enum SoundProfile: String, CaseIterable, Identifiable, Hashable {
 
     var previewEvents: [SoundEvent] {
         switch self {
-        case .yameteKudasai:
-            return [.completion, .sessionStart, .error]
+        case .meme:
+            return [.completion, .sessionStart, .skillIssue]
         case .quietGlass, .softRelay, .deepSignal:
             return [.completion, .approvalNeeded, .error]
         }
@@ -66,6 +68,7 @@ enum SoundCue: String, Equatable {
     case completion
     case attention
     case failure
+    case skillIssue
 }
 
 extension SoundEvent {
@@ -77,6 +80,8 @@ extension SoundEvent {
             return .attention
         case .error, .approvalDenied:
             return .failure
+        case .skillIssue:
+            return .skillIssue
         }
     }
 }
@@ -152,6 +157,16 @@ struct SoundSynthesizer {
                 ],
                 envelope: Envelope(attack: 0.012, release: 0.08, decay: 2.4)
             )
+        case (.quietGlass, .skillIssue):
+            return CuePreset(
+                duration: 0.58,
+                voices: [
+                    Voice(987.77, start: 0.00, duration: 0.22, gain: 0.080, brightness: 0.50),
+                    Voice(739.99, start: 0.14, duration: 0.22, gain: 0.072, brightness: 0.42),
+                    Voice(554.37, start: 0.28, duration: 0.24, gain: 0.066, brightness: 0.36),
+                ],
+                envelope: Envelope(attack: 0.012, release: 0.09, decay: 2.2)
+            )
 
         case (.softRelay, .completion):
             return CuePreset(
@@ -179,6 +194,16 @@ struct SoundSynthesizer {
                     Voice(349.23, start: 0.07, duration: 0.22, gain: 0.052, brightness: 0.08),
                 ],
                 envelope: Envelope(attack: 0.020, release: 0.12, decay: 1.8)
+            )
+        case (.softRelay, .skillIssue):
+            return CuePreset(
+                duration: 0.56,
+                voices: [
+                    Voice(659.25, start: 0.00, duration: 0.25, gain: 0.070, brightness: 0.20),
+                    Voice(493.88, start: 0.13, duration: 0.25, gain: 0.062, brightness: 0.16),
+                    Voice(369.99, start: 0.27, duration: 0.23, gain: 0.056, brightness: 0.12),
+                ],
+                envelope: Envelope(attack: 0.020, release: 0.12, decay: 1.7)
             )
 
         case (.deepSignal, .completion):
@@ -208,11 +233,21 @@ struct SoundSynthesizer {
                 ],
                 envelope: Envelope(attack: 0.026, release: 0.16, decay: 1.5)
             )
+        case (.deepSignal, .skillIssue):
+            return CuePreset(
+                duration: 0.60,
+                voices: [
+                    Voice(329.63, start: 0.00, duration: 0.28, gain: 0.082, brightness: 0.14),
+                    Voice(246.94, start: 0.15, duration: 0.26, gain: 0.072, brightness: 0.11),
+                    Voice(185.00, start: 0.30, duration: 0.24, gain: 0.064, brightness: 0.08),
+                ],
+                envelope: Envelope(attack: 0.026, release: 0.16, decay: 1.4)
+            )
 
         // The bundled voice clips are the primary cues for this profile. These
         // light fallback tones keep notifications functional if an app bundle
         // is copied without its resources.
-        case (.yameteKudasai, .completion):
+        case (.meme, .completion):
             return CuePreset(
                 duration: 0.50,
                 voices: [
@@ -221,7 +256,7 @@ struct SoundSynthesizer {
                 ],
                 envelope: Envelope(attack: 0.014, release: 0.10, decay: 1.9)
             )
-        case (.yameteKudasai, .attention):
+        case (.meme, .attention):
             return CuePreset(
                 duration: 0.44,
                 voices: [
@@ -230,7 +265,7 @@ struct SoundSynthesizer {
                 ],
                 envelope: Envelope(attack: 0.014, release: 0.10, decay: 1.9)
             )
-        case (.yameteKudasai, .failure):
+        case (.meme, .failure):
             return CuePreset(
                 duration: 0.36,
                 voices: [
@@ -238,6 +273,16 @@ struct SoundSynthesizer {
                     Voice(440.00, start: 0.08, duration: 0.24, gain: 0.070, brightness: 0.24),
                 ],
                 envelope: Envelope(attack: 0.014, release: 0.10, decay: 1.9)
+            )
+        case (.meme, .skillIssue):
+            return CuePreset(
+                duration: 0.62,
+                voices: [
+                    Voice(880.00, start: 0.00, duration: 0.24, gain: 0.090, brightness: 0.42),
+                    Voice(659.25, start: 0.16, duration: 0.24, gain: 0.080, brightness: 0.36),
+                    Voice(493.88, start: 0.32, duration: 0.24, gain: 0.072, brightness: 0.30),
+                ],
+                envelope: Envelope(attack: 0.014, release: 0.10, decay: 1.8)
             )
         }
     }

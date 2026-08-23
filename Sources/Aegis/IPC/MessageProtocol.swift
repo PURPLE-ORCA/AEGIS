@@ -1,4 +1,5 @@
 import Foundation
+import AegisBridgeSupport
 
 /// Incoming message from the bridge CLI.
 struct BridgeMessage: Codable {
@@ -13,6 +14,9 @@ struct BridgeMessage: Codable {
     let assistantMessage: String?
     let effortLevel: String?
     let durationMs: Int?
+    /// Structured provider result. Nil means the provider did not expose a
+    /// trustworthy outcome; callers must not infer failure from output text.
+    let toolOutcome: ToolOutcome?
     let toolFilePath: String?
     let toolContent: String?
     let toolOldString: String?
@@ -39,6 +43,7 @@ struct BridgeMessage: Codable {
         assistantMessage: String? = nil,
         effortLevel: String? = nil,
         durationMs: Int? = nil,
+        toolOutcome: ToolOutcome? = nil,
         toolFilePath: String? = nil,
         toolContent: String? = nil,
         toolOldString: String? = nil,
@@ -59,6 +64,7 @@ struct BridgeMessage: Codable {
         self.assistantMessage = assistantMessage
         self.effortLevel = effortLevel
         self.durationMs = durationMs
+        self.toolOutcome = toolOutcome
         self.toolFilePath = toolFilePath
         self.toolContent = toolContent
         self.toolOldString = toolOldString
@@ -94,6 +100,7 @@ struct BridgeMessage: Codable {
         case assistantMessage = "assistant_message"
         case effortLevel = "effort_level"
         case durationMs = "duration_ms"
+        case toolOutcome = "tool_outcome"
         case toolFilePath = "tool_file_path"
         case toolContent = "tool_content"
         case toolOldString = "tool_old_string"

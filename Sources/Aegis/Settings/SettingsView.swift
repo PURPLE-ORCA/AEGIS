@@ -514,6 +514,7 @@ struct SettingsView: View {
         (.approvalNeeded, "Approval needed",  "Permission or question pending"),
         (.approvalGranted,"Approval granted", "You allowed an action"),
         (.approvalDenied, "Approval denied",  "You denied an action"),
+        (.skillIssue,      "Skill issue",      "The same tool failed three times in 90 seconds"),
     ]
 
     @ViewBuilder

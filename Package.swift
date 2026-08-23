@@ -11,6 +11,7 @@ let package = Package(
         .executableTarget(
             name: "Aegis",
             dependencies: [
+                "AegisBridgeSupport",
                 .product(name: "ConfettiSwiftUI", package: "ConfettiSwiftUI"),
             ],
             path: "Sources/Aegis",

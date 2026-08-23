@@ -357,6 +357,17 @@ if let effort = payload["effort"] as? [String: Any], let level = effort["level"]
     message["effort_level"] = level
 }
 if let durationMs = payload["duration_ms"] as? Int { message["duration_ms"] = durationMs }
+if hookEvent == "PostToolUse" {
+    let directOutcome = StructuredToolOutcomeDetector.namedOutcome(payload["tool_outcome"])
+        ?? StructuredToolOutcomeDetector.namedOutcome(payload["status"])
+    let structuredOutcome = ["result", "tool_response", "toolResponse", "output"]
+        .compactMap { payload[$0] }
+        .compactMap { StructuredToolOutcomeDetector.explicitOutcome(from: $0) }
+        .first
+    if let outcome = directOutcome ?? structuredOutcome {
+        message["tool_outcome"] = outcome.rawValue
+    }
+}
 // Codex emits `model` at the top level.
 if let model = payload["model"] as? String, !model.isEmpty {
     message["model"] = model

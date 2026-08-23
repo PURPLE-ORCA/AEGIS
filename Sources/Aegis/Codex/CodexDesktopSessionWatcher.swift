@@ -1,4 +1,5 @@
 import Foundation
+import AegisBridgeSupport
 
 enum CodexReconciliationScope: Hashable {
     case active
@@ -376,7 +377,17 @@ final class CodexDesktopSessionWatcher {
                 emit(.init(sessionId: sessionId, hookEvent: "PreToolUse", cwd: state.cwd, toolName: name, toolInput: input, source: "codex", model: state.model))
             case "custom_tool_call_output", "function_call_output":
                 let name = callId.flatMap { state.tools.removeValue(forKey: $0) } ?? "Tool"
-                emit(.init(sessionId: sessionId, hookEvent: "PostToolUse", cwd: state.cwd, toolName: name, source: "codex", model: state.model))
+                let outcome = StructuredToolOutcomeDetector.explicitOutcome(from: payload["output"])
+                    ?? StructuredToolOutcomeDetector.explicitOutcome(from: payload)
+                emit(.init(
+                    sessionId: sessionId,
+                    hookEvent: "PostToolUse",
+                    cwd: state.cwd,
+                    toolName: name,
+                    toolOutcome: outcome,
+                    source: "codex",
+                    model: state.model
+                ))
             default:
                 break
             }

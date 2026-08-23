@@ -109,6 +109,7 @@ enum SoundEvent: String, CaseIterable {
     case approvalNeeded = "approval-needed"
     case approvalGranted = "approval-granted"
     case approvalDenied = "approval-denied"
+    case skillIssue = "skill-issue"
 }
 
 @MainActor
@@ -140,6 +141,7 @@ final class SoundEngine {
             case .statusChanged(_, let status) where status == .error: return .error
             case .permissionRequested: return .approvalNeeded
             case .permissionResponded(_, let allowed): return allowed ? .approvalGranted : .approvalDenied
+            case .skillIssueDetected: return .skillIssue
             default: return nil
             }
         }()
