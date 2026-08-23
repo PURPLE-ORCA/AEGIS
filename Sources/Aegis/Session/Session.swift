@@ -20,6 +20,46 @@ enum SessionStatus: String, Codable, Equatable {
     }
 }
 
+struct SessionExecutionState: Equatable {
+    var turnActive = false
+    var activeSubagentCount = 0
+    var waitingForUser = false
+
+    var isConfirmedExecuting: Bool {
+        !waitingForUser && (turnActive || activeSubagentCount > 0)
+    }
+
+    mutating func beginTurn() {
+        turnActive = true
+        activeSubagentCount = 0
+        waitingForUser = false
+    }
+
+    mutating func recordProgress() {
+        turnActive = true
+        waitingForUser = false
+    }
+
+    mutating func beginSubagent() {
+        activeSubagentCount += 1
+        waitingForUser = false
+    }
+
+    mutating func endSubagent() {
+        activeSubagentCount = max(0, activeSubagentCount - 1)
+    }
+
+    mutating func waitForUser() {
+        waitingForUser = true
+    }
+
+    mutating func finish() {
+        turnActive = false
+        activeSubagentCount = 0
+        waitingForUser = false
+    }
+}
+
 enum PermissionAction: Hashable {
     case deny
     case allowOnce
@@ -86,6 +126,7 @@ struct Session: Identifiable {
     var cwd: String
     let startedAt: Date
     var status: SessionStatus
+    var executionState = SessionExecutionState()
     var currentTool: String?
     var pendingPermission: PendingPermission?
     var pendingQuestion: PendingQuestion?

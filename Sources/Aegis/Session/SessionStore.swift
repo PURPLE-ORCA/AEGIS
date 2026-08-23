@@ -16,6 +16,12 @@ enum SessionEvent {
     case notification(String, String)
 }
 
+enum SessionExecutionEvent: Equatable {
+    case began(String)
+    case progressed(String)
+    case ended(String)
+}
+
 enum SessionMessageOrigin: Equatable {
     case providerHook
     case durableProviderState
@@ -30,9 +36,11 @@ final class SessionStore: ObservableObject {
     @Published var sessions: [String: Session] = [:]
 
     let onEvent = PassthroughSubject<SessionEvent, Never>()
+    let onExecutionEvent = PassthroughSubject<SessionExecutionEvent, Never>()
 
     private enum PostCommitEffect {
         case event(SessionEvent)
+        case execution(SessionExecutionEvent)
         case action(() -> Void)
         case scheduleRemoval(sessionId: String, delay: TimeInterval)
     }
@@ -131,8 +139,14 @@ final class SessionStore: ObservableObject {
     /// removal after `delay`. A late hook arrival within `delay` cancels
     /// the removal and resurrects the session via `handleLateEvent`.
     private func markCompletedAndScheduleRemoval(sessionId: String, after delay: TimeInterval) {
-        guard sessions[sessionId]?.status != .completed else { return }
-        sessions[sessionId]?.status = .completed
+        guard var session = sessions[sessionId], session.status != .completed else { return }
+        let wasExecuting = session.executionState.isConfirmedExecuting
+        session.status = .completed
+        session.executionState.finish()
+        sessions[sessionId] = session
+        if wasExecuting {
+            onExecutionEvent.send(.ended(sessionId))
+        }
         onEvent.send(.sessionEnded(sessionId))
         scheduleRemoval(sessionId: sessionId, after: delay)
     }
@@ -261,6 +275,8 @@ final class SessionStore: ObservableObject {
         // whatever provider is most recently doing something.
         session.lastActivityAt = now
         let statusBefore = session.status
+        let wasExecuting = session.executionState.isConfirmedExecuting
+        var recordedExecutionProgress = false
 
         // Always update effort level if present (it's on most hooks)
         if let effort = message.effortLevel {
@@ -315,6 +331,7 @@ final class SessionStore: ObservableObject {
         case "SessionStart":
             skillIssueDetector.reset(sessionId: sessionId)
             session.status = .idle
+            session.executionState.finish()
             // ensureSession already emitted .sessionStarted for first-time
             // creates. Suppress the redundant SessionStart-hook emit so
             // subscribers (sounds, metrics) see exactly one start per id
@@ -327,6 +344,7 @@ final class SessionStore: ObservableObject {
         case "SessionEnd":
             skillIssueDetector.reset(sessionId: sessionId)
             session.status = .completed
+            session.executionState.finish()
             effects.append(.event(.sessionEnded(sessionId)))
             effects.append(.scheduleRemoval(sessionId: sessionId, delay: 5.0))
 
@@ -341,12 +359,16 @@ final class SessionStore: ObservableObject {
             }
             session.status = .thinking
             session.currentTool = nil
+            session.executionState.beginTurn()
+            recordedExecutionProgress = true
             effects.append(.event(.statusChanged(sessionId, .thinking)))
 
         case "PreToolUse":
             let toolName = message.toolName ?? "unknown"
             session.status = .toolUse
             session.currentTool = toolName
+            session.executionState.recordProgress()
+            recordedExecutionProgress = true
             effects.append(.event(.toolStarted(sessionId, toolName)))
 
             // Codex's `request_user_input` and Hermes' `clarify` are their
@@ -363,6 +385,7 @@ final class SessionStore: ObservableObject {
                let desc = message.toolInput,
                let parsedQuestions = Self.parseQuestion(desc) {
                 session.status = .waitingPermission
+                session.executionState.waitForUser()
                 session.pendingQuestion = PendingQuestion(
                     questions: parsedQuestions,
                     respond: { [weak self] _ in
@@ -381,6 +404,8 @@ final class SessionStore: ObservableObject {
             let toolName = message.toolName ?? "unknown"
             session.status = .thinking
             session.currentTool = nil
+            session.executionState.recordProgress()
+            recordedExecutionProgress = true
             session.lastToolDurationMs = message.durationMs
             // Don't update lastAssistantMessage from tool output
             effects.append(.event(.toolEnded(sessionId, toolName, message.toolOutcome)))
@@ -402,6 +427,7 @@ final class SessionStore: ObservableObject {
                let desc = description,
                let parsedQuestions = Self.parseQuestion(desc) {
                 session.status = .waitingPermission
+                session.executionState.waitForUser()
                 session.pendingQuestion = PendingQuestion(
                     questions: parsedQuestions,
                     respond: { rawData in
@@ -413,6 +439,7 @@ final class SessionStore: ObservableObject {
                 effects.append(.event(.questionAsked(sessionId)))
             } else {
                 session.status = .waitingPermission
+                session.executionState.waitForUser()
                 session.pendingPermission = PendingPermission(
                     toolName: toolName,
                     description: description,
@@ -478,6 +505,7 @@ final class SessionStore: ObservableObject {
             }
             session.status = .idle
             session.currentTool = nil
+            session.executionState.finish()
             effects.append(.event(.statusChanged(sessionId, .idle)))
 
         case "Notification":
@@ -489,14 +517,19 @@ final class SessionStore: ObservableObject {
 
         case "SubagentStart":
             session.currentTool = "Agent"
+            session.executionState.beginSubagent()
+            recordedExecutionProgress = true
             effects.append(.event(.toolStarted(sessionId, "Agent")))
 
         case "SubagentStop":
             session.currentTool = nil
+            session.executionState.endSubagent()
+            recordedExecutionProgress = true
             effects.append(.event(.toolEnded(sessionId, "Agent", nil)))
 
         case "PreCompact":
-            break
+            session.executionState.recordProgress()
+            recordedExecutionProgress = true
 
         default:
             break
@@ -513,12 +546,23 @@ final class SessionStore: ObservableObject {
             session.activeStartedAt = nil
         }
 
+        let isExecuting = session.executionState.isConfirmedExecuting
+        if !wasExecuting && isExecuting {
+            effects.append(.execution(.began(sessionId)))
+        } else if wasExecuting && !isExecuting {
+            effects.append(.execution(.ended(sessionId)))
+        } else if isExecuting && recordedExecutionProgress {
+            effects.append(.execution(.progressed(sessionId)))
+        }
+
         sessions[sessionId] = session
 
         for effect in effects {
             switch effect {
             case .event(let event):
                 onEvent.send(event)
+            case .execution(let event):
+                onExecutionEvent.send(event)
             case .action(let action):
                 action()
             case .scheduleRemoval(let sessionId, let delay):
