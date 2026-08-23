@@ -2,6 +2,13 @@ import AppKit
 import SwiftUI
 import Combine
 
+enum NotchPanelTransitionPolicy {
+    static func duration(for state: NotchState) -> TimeInterval {
+        if case .collapsed = state { return 0 }
+        return 0.32
+    }
+}
+
 final class NotchWindowController: NSWindowController {
     private let viewModel: NotchViewModel
     private let sessionStore: SessionStore
@@ -70,8 +77,8 @@ final class NotchWindowController: NSWindowController {
         // Reposition window when state changes
         viewModel.$state
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.repositionWindow()
+            .sink { [weak self] state in
+                self?.repositionWindow(for: state)
             }
             .store(in: &cancellables)
 
@@ -198,9 +205,10 @@ final class NotchWindowController: NSWindowController {
         }
     }
 
-    private func repositionWindow() {
+    private func repositionWindow(for state: NotchState? = nil) {
         guard let panel = window else { return }
         let target = viewModel.currentSize
+        let transitionState = state ?? viewModel.state
         // Always snap the window to the (possibly new) notch screen's
         // top-center first. Without this, a resolution change that
         // doesn't alter our panel size leaves the window pinned at its
@@ -211,7 +219,10 @@ final class NotchWindowController: NSWindowController {
         let x = screen.midX - cur.width / 2
         let y = screen.maxY - cur.height
         panel.setFrame(NSRect(x: x, y: y, width: cur.width, height: cur.height), display: true)
-        animatePanelToSize(target, duration: 0.32)
+        animatePanelToSize(
+            target,
+            duration: NotchPanelTransitionPolicy.duration(for: transitionState)
+        )
     }
 
     /// Display-link-driven frame animation. Stays in lock-step with the
@@ -228,7 +239,7 @@ final class NotchWindowController: NSWindowController {
         animationDisplayLink?.invalidate()
         animationDisplayLink = nil
 
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        if duration == 0 || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             let screen = ScreenDetector.notchScreen.frame
             panel.setFrame(
                 NSRect(

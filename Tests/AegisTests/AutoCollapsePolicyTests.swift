@@ -3,6 +3,11 @@ import XCTest
 
 @MainActor
 final class AutoCollapsePolicyTests: XCTestCase {
+    func testCollapsedStateSnapsWindowToMatchCompactContent() {
+        XCTAssertEqual(NotchPanelTransitionPolicy.duration(for: .collapsed), 0)
+        XCTAssertEqual(NotchPanelTransitionPolicy.duration(for: .expanded), 0.32)
+    }
+
     func testHoveredFinishedCardRearmsBeforeDeadline() {
         let now = Date()
 
