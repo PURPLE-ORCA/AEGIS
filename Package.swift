@@ -18,6 +18,7 @@ let package = Package(
                 .copy("../../Resources/cli-icons"),
                 .copy("../../Resources/branding"),
                 .copy("../../Resources/companion"),
+                .copy("../../Resources/sounds"),
             ],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),

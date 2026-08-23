@@ -6,8 +6,35 @@ final class SoundProfileTests: XCTestCase {
     func testProfessionalProfilesHaveStableNames() {
         XCTAssertEqual(
             SoundProfile.allCases.map(\.displayName),
-            ["Quiet Glass", "Soft Relay", "Deep Signal"]
+            ["Quiet Glass", "Soft Relay", "Deep Signal", "Yamete Kudasai"]
         )
+    }
+
+    func testYameteKudasaiProfileHasReadableVoiceCues() throws {
+        let resources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Resources/sounds/yamete-kudasai", isDirectory: true)
+
+        for name in ["yamete-kudasai", "brief-action"] {
+            let file = try AVAudioFile(
+                forReading: resources.appendingPathComponent("\(name).aiff")
+            )
+            XCTAssertGreaterThan(file.length, 0, name)
+            XCTAssertEqual(file.processingFormat.channelCount, 1, name)
+        }
+    }
+
+    func testYameteKudasaiUsesBriefClipOnlyForBriefActions() {
+        let profile = SoundProfile.yameteKudasai
+
+        XCTAssertEqual(profile.bundledSoundName(for: .sessionStart), "brief-action")
+        XCTAssertEqual(profile.bundledSoundName(for: .toolUse), "brief-action")
+
+        for event in SoundEvent.allCases where event != .sessionStart && event != .toolUse {
+            XCTAssertEqual(profile.bundledSoundName(for: event), "yamete-kudasai", event.rawValue)
+        }
     }
 
     func testEventsMapToCompletionAttentionAndFailureCues() {

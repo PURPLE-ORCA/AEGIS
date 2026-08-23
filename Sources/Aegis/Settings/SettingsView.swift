@@ -450,7 +450,7 @@ struct SettingsView: View {
         } header: {
             Text("Profile")
         } footer: {
-            Text("Preview plays the completion, attention, and failure cues in sequence.")
+            Text("Preview plays representative event cues in sequence.")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)

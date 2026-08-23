@@ -5,6 +5,7 @@ enum SoundProfile: String, CaseIterable, Identifiable, Hashable {
     case quietGlass = "quiet-glass"
     case softRelay = "soft-relay"
     case deepSignal = "deep-signal"
+    case yameteKudasai = "yamete-kudasai"
 
     var id: String { rawValue }
 
@@ -13,6 +14,7 @@ enum SoundProfile: String, CaseIterable, Identifiable, Hashable {
         case .quietGlass: return "Quiet Glass"
         case .softRelay: return "Soft Relay"
         case .deepSignal: return "Deep Signal"
+        case .yameteKudasai: return "Yamete Kudasai"
         }
     }
 
@@ -24,11 +26,43 @@ enum SoundProfile: String, CaseIterable, Identifiable, Hashable {
             return "Warm, rounded cues designed for long work sessions."
         case .deepSignal:
             return "Low, deliberate cues with a measured finish."
+        case .yameteKudasai:
+            return "Unhinged anime reactions for every agent state."
+        }
+    }
+
+    var bundledSoundSubdirectory: String? {
+        switch self {
+        case .yameteKudasai:
+            return "sounds/yamete-kudasai"
+        case .quietGlass, .softRelay, .deepSignal:
+            return nil
+        }
+    }
+
+    func bundledSoundName(for event: SoundEvent) -> String? {
+        guard self == .yameteKudasai else { return nil }
+
+        switch event {
+        case .sessionStart, .toolUse:
+            return "brief-action"
+        case .sessionEnd, .completion, .error,
+             .approvalNeeded, .approvalGranted, .approvalDenied:
+            return "yamete-kudasai"
+        }
+    }
+
+    var previewEvents: [SoundEvent] {
+        switch self {
+        case .yameteKudasai:
+            return [.completion, .sessionStart, .error]
+        case .quietGlass, .softRelay, .deepSignal:
+            return [.completion, .approvalNeeded, .error]
         }
     }
 }
 
-enum SoundCue: Equatable {
+enum SoundCue: String, Equatable {
     case completion
     case attention
     case failure
@@ -173,6 +207,37 @@ struct SoundSynthesizer {
                     Voice(164.81, start: 0.07, duration: 0.21, gain: 0.060, brightness: 0.06),
                 ],
                 envelope: Envelope(attack: 0.026, release: 0.16, decay: 1.5)
+            )
+
+        // The bundled voice clips are the primary cues for this profile. These
+        // light fallback tones keep notifications functional if an app bundle
+        // is copied without its resources.
+        case (.yameteKudasai, .completion):
+            return CuePreset(
+                duration: 0.50,
+                voices: [
+                    Voice(783.99, start: 0.00, duration: 0.28, gain: 0.090, brightness: 0.38),
+                    Voice(1046.50, start: 0.10, duration: 0.34, gain: 0.080, brightness: 0.42),
+                ],
+                envelope: Envelope(attack: 0.014, release: 0.10, decay: 1.9)
+            )
+        case (.yameteKudasai, .attention):
+            return CuePreset(
+                duration: 0.44,
+                voices: [
+                    Voice(698.46, start: 0.00, duration: 0.27, gain: 0.085, brightness: 0.34),
+                    Voice(932.33, start: 0.12, duration: 0.27, gain: 0.075, brightness: 0.36),
+                ],
+                envelope: Envelope(attack: 0.014, release: 0.10, decay: 1.9)
+            )
+        case (.yameteKudasai, .failure):
+            return CuePreset(
+                duration: 0.36,
+                voices: [
+                    Voice(587.33, start: 0.00, duration: 0.25, gain: 0.088, brightness: 0.30),
+                    Voice(440.00, start: 0.08, duration: 0.24, gain: 0.070, brightness: 0.24),
+                ],
+                envelope: Envelope(attack: 0.014, release: 0.10, decay: 1.9)
             )
         }
     }

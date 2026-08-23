@@ -189,9 +189,8 @@ final class SoundEngine {
 
     /// Preview the three semantic cues without changing event assignments.
     func previewProfile(_ profile: SoundProfile) {
-        let synthesizer = SoundSynthesizer(profile: profile)
-        for event in [SoundEvent.completion, .approvalNeeded, .error] {
-            if let buffer = synthesizer.generateSound(for: event) {
+        for event in profile.previewEvents {
+            if let buffer = defaultBuffer(for: event, profile: profile) {
                 playBuffer(buffer, gain: eventVolume(for: event))
             }
         }
@@ -325,9 +324,46 @@ final class SoundEngine {
             }
         }
 
-        let generated = synthesizer.generateSound(for: event)
+        let generated = defaultBuffer(for: event, profile: profile, synthesizer: synthesizer)
         soundBuffers[event] = generated
         return generated
+    }
+
+    private func defaultBuffer(
+        for event: SoundEvent,
+        profile: SoundProfile,
+        synthesizer: SoundSynthesizer? = nil
+    ) -> AVAudioPCMBuffer? {
+        if let subdirectory = profile.bundledSoundSubdirectory,
+           let soundName = profile.bundledSoundName(for: event),
+           let url = bundledSoundURL(named: soundName, subdirectory: subdirectory),
+           let buffer = loadAudioFile(url) {
+            return buffer
+        }
+
+        return (synthesizer ?? SoundSynthesizer(profile: profile)).generateSound(for: event)
+    }
+
+    private func bundledSoundURL(named name: String, subdirectory: String) -> URL? {
+        let filename = "\(name).aiff"
+        let bundle = Bundle.main
+        let sourceResources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Resources", isDirectory: true)
+
+        let candidates = [
+            bundle.url(forResource: name, withExtension: "aiff", subdirectory: subdirectory),
+            bundle.resourceURL?.appendingPathComponent(subdirectory).appendingPathComponent(filename),
+            bundle.bundleURL.appendingPathComponent("Contents/Resources/\(subdirectory)/\(filename)"),
+            sourceResources.appendingPathComponent(subdirectory).appendingPathComponent(filename),
+        ]
+
+        return candidates.compactMap { $0 }.first {
+            FileManager.default.fileExists(atPath: $0.path)
+        }
     }
 
     /// Reload all sounds — call after the user drops new files in the sound-packs dir.
