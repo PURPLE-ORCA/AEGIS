@@ -7,7 +7,7 @@ final class SessionCardPresentationTests: XCTestCase {
         session.lastUserMessage = "Make the session cards compact"
 
         XCTAssertEqual(
-            SessionCardPresentation.preview(for: session),
+            SessionCardPresentation.compactTitle(for: session),
             "project"
         )
     }
@@ -17,18 +17,29 @@ final class SessionCardPresentationTests: XCTestCase {
         session.sessionTitle = "Compact session cards"
 
         XCTAssertEqual(
-            SessionCardPresentation.preview(for: session),
+            SessionCardPresentation.compactTitle(for: session),
             "Compact session cards"
         )
     }
 
-    func testToolPreviewUsesSessionName() {
+    func testExpandedDetailPrefersCurrentTool() {
         var session = makeSession(status: .toolUse)
         session.currentTool = "Swift compiler"
+        session.lastAssistantMessage = "An older reply"
 
         XCTAssertEqual(
-            SessionCardPresentation.preview(for: session),
-            "project"
+            SessionCardPresentation.detail(for: session),
+            "Using Swift compiler"
+        )
+    }
+
+    func testExpandedDetailUsesLatestAgentMessageWithoutCurrentTool() {
+        var session = makeSession(status: .thinking)
+        session.lastAssistantMessage = "Checking the panel sizing now."
+
+        XCTAssertEqual(
+            SessionCardPresentation.detail(for: session),
+            "Checking the panel sizing now."
         )
     }
 
@@ -45,7 +56,7 @@ final class SessionCardPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            SessionCardPresentation.preview(for: session),
+            SessionCardPresentation.detail(for: session),
             "Needs approval to use Terminal"
         )
     }
@@ -55,7 +66,7 @@ final class SessionCardPresentationTests: XCTestCase {
         session.lastAssistantMessage = "Done.\n\nThe cards now expand on hover."
 
         XCTAssertEqual(
-            SessionCardPresentation.preview(for: session),
+            SessionCardPresentation.detail(for: session),
             "Done. The cards now expand on hover."
         )
     }
@@ -64,7 +75,7 @@ final class SessionCardPresentationTests: XCTestCase {
         var session = makeSession(status: .idle)
         session.lastAssistantMessage = "A deliberately long session message"
 
-        let preview = SessionCardPresentation.preview(for: session, maximumLength: 12)
+        let preview = SessionCardPresentation.detail(for: session, maximumLength: 12)
 
         XCTAssertEqual(preview.count, 12)
         XCTAssertTrue(preview.hasSuffix("…"))
@@ -81,17 +92,10 @@ final class SessionCardPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.opacity, 0)
     }
 
-    func testRuntimeUsesActiveTurnStartAndWholeSecondFormatting() {
-        var session = makeSession(status: .thinking)
-        session.activeStartedAt = Date(timeIntervalSince1970: 1_000)
+    func testThinkingDetailHasNoTimerFallback() {
+        let session = makeSession(status: .thinking)
 
-        XCTAssertEqual(
-            SessionCardPresentation.runtimeText(
-                for: session,
-                at: Date(timeIntervalSince1970: 1_125)
-            ),
-            "2m 5s"
-        )
+        XCTAssertEqual(SessionCardPresentation.detail(for: session), "Thinking…")
     }
 
     private func makeSession(status: SessionStatus) -> Session {

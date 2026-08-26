@@ -84,7 +84,7 @@ struct SessionCardView: View {
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityLabel("Open \(session.provider.displayName) session \(session.displayName)")
-        .accessibilityValue(SessionCardPresentation.preview(for: session))
+        .accessibilityValue(SessionCardPresentation.detail(for: session))
         .accessibilityHint("Opens this session in its app or terminal when activated.")
         .onPreferenceChange(SessionCardDetailHeightKey.self) { height in
             guard height > 0, abs(detailContentHeight - height) > 0.5 else { return }
@@ -122,7 +122,7 @@ struct SessionCardView: View {
                 provider: session.provider
             )
 
-            Text(MarkdownText.inline(SessionCardPresentation.preview(for: session)))
+            Text(SessionCardPresentation.compactTitle(for: session))
                 .font(theme.font(size: 12, weight: .medium))
                 .foregroundColor(theme.cardForeground.opacity(0.90))
                 .multilineTextAlignment(.leading)
@@ -130,165 +130,49 @@ struct SessionCardView: View {
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            if isActive {
-                TimelineView(.periodic(from: .now, by: 1.0)) { context in
-                    runtimeLabel(at: context.date)
-                }
-            } else {
-                runtimeLabel(at: Date())
-            }
+            compactStatusBadge
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
     }
 
-    private func runtimeLabel(at date: Date) -> some View {
-        Text(SessionCardPresentation.runtimeText(for: session, at: date))
-            .font(theme.font(size: 10, weight: .semibold))
-            .foregroundColor(theme.cardForeground.opacity(0.48))
-            .monospacedDigit()
-            .lineLimit(1)
-    }
-
     private var detailContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Row 1: title + effort + time. The compact mascot/message row
-            // remains mounted above this content throughout the transition.
-            HStack(spacing: 8) {
-                Text(session.displayName)
-                    .font(theme.font(size: 13, weight: .heavy))
-                    .foregroundColor(theme.cardForeground)
+        HStack(alignment: .top, spacing: 12) {
+            Text(MarkdownText.inline(SessionCardPresentation.detail(for: session)))
+                .font(theme.font(size: 11))
+                .foregroundColor(theme.cardForeground.opacity(0.75))
+                .multilineTextAlignment(.leading)
+                .lineLimit(3)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let model = session.shortModelName {
+                Text(model)
+                    .font(theme.font(size: 9, weight: .semibold))
+                    .foregroundColor(theme.cardForeground.opacity(0.5))
                     .lineLimit(1)
-                if let effort = session.effortLevel {
-                    EffortBadge(level: effort)
-                }
-                Spacer(minLength: 6)
-                if let model = session.shortModelName {
-                    Text(model)
-                        .font(theme.font(size: 9))
-                        .foregroundColor(theme.cardForeground.opacity(0.55))
-                    Text("·")
-                        .font(theme.font(size: 9))
-                        .foregroundColor(theme.cardForeground.opacity(0.25))
-                }
-                Text(session.durationText)
-                    .font(theme.font(size: 9))
-                    .foregroundColor(theme.cardForeground.opacity(0.45))
-            }
-
-            // Row 2: prompt (on its own line for readability)
-            // Show the latest user prompt — `firstPrompt` was sticky for
-            // the entire session and stayed stale after the user sent more.
-            if let prompt = session.lastUserMessage ?? session.firstPrompt {
-                Text(prompt)
-                    .font(theme.font(size: 11))
-                    .foregroundColor(theme.cardForeground.opacity(0.7))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-            }
-
-            // Row 3: status pill + terminal pill
-            HStack(spacing: 7) {
-                statusPill
-                Spacer(minLength: 6)
-                terminalPill
-            }
-
-            // Idle conversation sub-box
-            if session.status == .idle, session.lastAssistantMessage != nil {
-                VStack(alignment: .leading, spacing: 6) {
-                    if let msg = session.lastUserMessage {
-                        HStack(alignment: .top, spacing: 6) {
-                            Text("YOU")
-                                .font(theme.font(size: 9, weight: .heavy))
-                                .foregroundColor(.white.opacity(0.5))
-                                .kerning(1.2)
-                            Text(msg)
-                                .font(theme.font(size: 11))
-                                .foregroundColor(.white.opacity(0.8))
-                                .lineLimit(1)
-                        }
-                    }
-                    if let resp = session.lastAssistantMessage {
-                        HStack(alignment: .top, spacing: 6) {
-                            Text(session.provider.displayName.uppercased())
-                                .font(theme.font(size: 9, weight: .heavy))
-                                .foregroundColor(session.provider.accentColor.opacity(0.85))
-                                .kerning(1.2)
-                            // Glance preview: inline-markdown (bold / `code` /
-                            // italics) over a length-capped slice, line-limited.
-                            // We cap the input and avoid a ScrollView on purpose —
-                            // a ScrollView lays out the ENTIRE response to size
-                            // itself, which spiked CPU ×N cards. Full reply (with
-                            // code blocks etc.) lives in the Finished view.
-                            Text(MarkdownText.inline(String(resp.prefix(400))))
-                                .font(theme.font(size: 11))
-                                .foregroundColor(.white.opacity(0.85))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .lineLimit(4)
-                                .truncationMode(.tail)
-                        }
-                    }
-                }
-                .padding(10)
-                // On light-card themes the inset well goes dark so its white
-                // conversation text stays legible; otherwise it's the theme box.
-                .background(
-                    RoundedRectangle(cornerRadius: theme.boxRadius, style: .continuous)
-                        .fill(theme.lightCards ? Color.black.opacity(0.82) : theme.boxFill)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: theme.boxRadius, style: .continuous)
-                                .strokeBorder(theme.lightCards ? Color.black : theme.boxStroke,
-                                              lineWidth: theme.strokeWidth)
-                        )
-                )
+                    .fixedSize(horizontal: true, vertical: false)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 2)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 14)
+        .padding(.top, 1)
+        .padding(.bottom, 11)
     }
 
     @ViewBuilder
-    private var statusPill: some View {
+    private var compactStatusBadge: some View {
         HStack(spacing: 5) {
             statusIcon
-            Text(statusText)
+            Text(compactStatusText)
                 .font(theme.font(size: 10, weight: .bold))
                 .foregroundColor(statusAccent)
                 .lineLimit(1)
-            if isActive, let started = session.activeStartedAt {
-                Text("·")
-                    .font(theme.font(size: 10))
-                    .foregroundColor(.white.opacity(0.3))
-                // TimelineView ticks every 100ms so the elapsed time is live.
-                // Tick once a second: the elapsed display reads in whole seconds
-                // at a glance, so 10Hz just repainted the transparent window for
-                // nothing (× every thinking card).
-                TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
-                    Text(formatElapsed(ctx.date.timeIntervalSince(started)))
-                        .font(theme.font(size: 10))
-                        .foregroundColor(.white.opacity(0.55))
-                        .monospacedDigit()
-                }
-            }
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 3)
         .notchPill(theme, fill: theme.chipFill(statusAccent.opacity(0.15)))
-    }
-
-    private func formatElapsed(_ seconds: TimeInterval) -> String {
-        if seconds < 1.0 {
-            return "\(Int(seconds * 1000))ms"
-        }
-        if seconds < 60 {
-            return String(format: "%.1fs", seconds)
-        }
-        let m = Int(seconds) / 60
-        let s = Int(seconds) % 60
-        return "\(m)m \(s)s"
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     @ViewBuilder
@@ -311,32 +195,13 @@ struct SessionCardView: View {
         }
     }
 
-    private var statusText: String {
+    private var compactStatusText: String {
         switch session.status {
-        case .toolUse:
-            if let tool = session.currentTool { return "Using \(tool)" }
-            return "Working..."
-        case .thinking: return "Thinking..."
+        case .thinking, .toolUse: return "Thinking..."
         case .idle, .completed: return "Idle"
         case .waitingPermission: return "Needs approval"
         case .error: return "Error"
         }
-    }
-
-    private var terminalPill: some View {
-        HStack(spacing: 4) {
-            Image(systemName: session.terminalInfo == nil && ["codex", "hermes"].contains(session.source)
-                  ? "arrow.up.forward.app"
-                  : "terminal")
-                .font(.system(size: 9))
-                .foregroundColor(.white.opacity(0.6))
-            Text(session.detectedTerminalApp)
-                .font(theme.font(size: 9, weight: .semibold))
-                .foregroundColor(.white.opacity(0.75))
-        }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 2)
-        .notchPill(theme, fill: theme.chipFill(.white.opacity(0.06)), base: 4)
     }
 }
 
