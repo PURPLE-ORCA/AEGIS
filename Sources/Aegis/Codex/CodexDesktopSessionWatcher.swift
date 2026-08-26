@@ -103,6 +103,8 @@ struct CodexRecentDirectoryDiscovery {
 final class CodexDesktopSessionWatcher {
     var onMessage: ((BridgeMessage) -> Void)?
 
+    private static let turnContextMarker = Data(#""turn_context""#.utf8)
+
     private struct SessionState {
         var id: String?
         var cwd: String?
@@ -422,6 +424,7 @@ final class CodexDesktopSessionWatcher {
               let payload = object["payload"] as? [String: Any] else { return SessionState() }
 
         let turnContext = try? ReverseJSONLReader(path: url.path).firstMatch { line -> TurnMetadata? in
+            guard line.range(of: Self.turnContextMarker) != nil else { return nil }
             guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
                   object["type"] as? String == "turn_context",
                   let payload = object["payload"] as? [String: Any] else { return nil }
