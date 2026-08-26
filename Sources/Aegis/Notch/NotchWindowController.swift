@@ -82,6 +82,17 @@ final class NotchWindowController: NSWindowController {
             }
             .store(in: &cancellables)
 
+        // SwiftUI owns the session-card height animation. Follow its measured
+        // presentation directly so AppKit does not start a competing tween for
+        // every intermediate frame.
+        viewModel.$dynamicExpandedHeight
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.repositionExpandedContentWindow()
+            }
+            .store(in: &cancellables)
+
         // The notch is ambient status UI, not an always-on launcher. Keep the
         // panel entirely off-screen when there is no running/actionable work,
         // while still allowing transient results and decisions to surface.
@@ -222,6 +233,26 @@ final class NotchWindowController: NSWindowController {
         animatePanelToSize(
             target,
             duration: NotchPanelTransitionPolicy.duration(for: transitionState)
+        )
+    }
+
+    private func repositionExpandedContentWindow() {
+        guard case .expanded = viewModel.state,
+              let panel = window else { return }
+
+        animationDisplayLink?.invalidate()
+        animationDisplayLink = nil
+
+        let target = viewModel.currentSize
+        let screen = ScreenDetector.notchScreen.frame
+        panel.setFrame(
+            NSRect(
+                x: screen.midX - target.width / 2,
+                y: screen.maxY - target.height,
+                width: target.width,
+                height: target.height
+            ),
+            display: false
         )
     }
 

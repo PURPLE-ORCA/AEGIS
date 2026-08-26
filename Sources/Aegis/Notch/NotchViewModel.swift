@@ -45,9 +45,7 @@ final class NotchViewModel: ObservableObject {
         let height = ScreenDetector.notchHeight
         return NSSize(width: width, height: height)
     }
-    // The expanded panel stays fixed while cards morph inside its scroll view.
-    // A stable native frame keeps pointer tracking continuous during hover.
-    static let expandedSize = NSSize(width: 600, height: SessionListWindowLayout.maximumHeight)
+    static let expandedWidth: CGFloat = 600
     // Permission: wide enough for details
     static let permissionSize = NSSize(width: 600, height: 380)
     // Question: taller for multiple questions
@@ -59,6 +57,7 @@ final class NotchViewModel: ObservableObject {
     }
 
     // Dynamic content heights — measured by their views as content changes.
+    @Published var dynamicExpandedHeight: CGFloat? = nil
     @Published var dynamicPermissionHeight: CGFloat? = nil
     @Published var dynamicFinishedHeight: CGFloat? = nil
 
@@ -67,7 +66,10 @@ final class NotchViewModel: ObservableObject {
         case .collapsed:
             return Self.collapsedSize
         case .expanded:
-            return Self.expandedSize
+            return NSSize(
+                width: Self.expandedWidth,
+                height: dynamicExpandedHeight ?? Self.collapsedSize.height
+            )
         case .finished:
             return NSSize(width: 600, height: dynamicFinishedHeight ?? Self.finishedSize.height)
         case .permission:
@@ -134,6 +136,7 @@ final class NotchViewModel: ObservableObject {
 
     func expand(holdSeconds: Double? = nil) {
         guard state == .collapsed else { return }
+        dynamicExpandedHeight = nil
         state = .expanded
         scheduleAutoCollapse(delay: holdSeconds ?? 0.6)
     }
@@ -162,6 +165,17 @@ final class NotchViewModel: ObservableObject {
         let fitted = FinishedReplyWindowLayout.fittedHeight(height)
         guard abs((dynamicFinishedHeight ?? Self.finishedSize.height) - fitted) > 0.5 else { return }
         dynamicFinishedHeight = fitted
+    }
+
+    func updateExpandedContentHeight(_ height: CGFloat) {
+        let fitted = min(
+            SessionListWindowLayout.maximumHeight,
+            max(1, height)
+        )
+        guard abs((dynamicExpandedHeight ?? Self.collapsedSize.height) - fitted) > 0.5 else {
+            return
+        }
+        dynamicExpandedHeight = fitted
     }
 
     func showFinished(session: Session) {

@@ -6,6 +6,7 @@ struct SessionListView: View {
     @ObservedObject var settingsStore: SettingsStore
     let onCollapse: () -> Void
     let onOpenSettings: () -> Void
+    let onContentHeightChange: (CGFloat) -> Void
 
     @Environment(\.notchTheme) private var theme
 
@@ -16,6 +17,7 @@ struct SessionListView: View {
     /// behind the section header until expanded again.
     @State private var collapsedProviders: Set<String> = []
     @State private var measuredChromeHeight: CGFloat = 44
+    @State private var measuredListContentHeight: CGFloat = 1
 
     /// Tapping the rate limit bar cycles selectedProvider through every
     /// provider that actually has data to show, skipping ones that would
@@ -162,9 +164,18 @@ struct SessionListView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
+                    .background {
+                        GeometryReader { geometry in
+                            Color.clear.preference(
+                                key: SessionListContentHeightKey.self,
+                                value: geometry.size.height
+                            )
+                        }
+                    }
                 }
                 .frame(height: SessionListWindowLayout.viewportHeight(
-                    chromeHeight: measuredChromeHeight
+                    chromeHeight: measuredChromeHeight,
+                    contentHeight: measuredListContentHeight
                 ))
             }
         }
@@ -173,10 +184,27 @@ struct SessionListView: View {
             guard height > 0 else { return }
             measuredChromeHeight = height
         }
+        .onPreferenceChange(SessionListContentHeightKey.self) { height in
+            guard height > 0 else { return }
+            measuredListContentHeight = height
+        }
+        .onChange(of: fittedWindowHeight) { _, height in
+            onContentHeightChange(height)
+        }
+        .onAppear {
+            onContentHeightChange(fittedWindowHeight)
+        }
         .onChange(of: projection.presentProviderIDs) { _, ids in
             guard let selectedProvider, !ids.contains(selectedProvider.id) else { return }
             self.selectedProvider = nil
         }
+    }
+
+    private var fittedWindowHeight: CGFloat {
+        SessionListWindowLayout.fittedHeight(
+            chromeHeight: measuredChromeHeight,
+            contentHeight: measuredListContentHeight
+        )
     }
 
     @ViewBuilder
@@ -227,15 +255,26 @@ struct SessionListView: View {
 }
 
 enum SessionListWindowLayout {
-    static let minimumHeight: CGFloat = 104
     static let maximumHeight: CGFloat = 320
 
-    static func viewportHeight(chromeHeight: CGFloat) -> CGFloat {
-        max(1, maximumHeight - chromeHeight)
+    static func viewportHeight(chromeHeight: CGFloat, contentHeight: CGFloat) -> CGFloat {
+        min(max(1, contentHeight), max(1, maximumHeight - chromeHeight))
+    }
+
+    static func fittedHeight(chromeHeight: CGFloat, contentHeight: CGFloat) -> CGFloat {
+        min(maximumHeight, max(1, chromeHeight + contentHeight))
     }
 }
 
 private struct SessionListChromeHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct SessionListContentHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {

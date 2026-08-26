@@ -28,15 +28,40 @@ final class SessionListProjectionTests: XCTestCase {
         XCTAssertEqual(projection.rateLimitProvider, .codex)
     }
 
-    func testExpandedSessionListUsesStableViewportHeight() {
+    func testExpandedSessionListFitsShortContent() {
         XCTAssertEqual(
-            SessionListWindowLayout.viewportHeight(chromeHeight: 44),
-            SessionListWindowLayout.maximumHeight - 44
+            SessionListWindowLayout.viewportHeight(chromeHeight: 44, contentHeight: 66),
+            66
         )
         XCTAssertEqual(
-            SessionListWindowLayout.viewportHeight(chromeHeight: 76),
+            SessionListWindowLayout.fittedHeight(chromeHeight: 44, contentHeight: 66),
+            110
+        )
+    }
+
+    func testExpandedSessionListCapsTallContent() {
+        XCTAssertEqual(
+            SessionListWindowLayout.viewportHeight(chromeHeight: 76, contentHeight: 500),
             SessionListWindowLayout.maximumHeight - 76
         )
+        XCTAssertEqual(
+            SessionListWindowLayout.fittedHeight(chromeHeight: 76, contentHeight: 500),
+            SessionListWindowLayout.maximumHeight
+        )
+    }
+
+    @MainActor
+    func testExpandedWindowTracksMeasuredContentHeight() {
+        let viewModel = NotchViewModel()
+        viewModel.expand()
+
+        XCTAssertEqual(viewModel.currentSize.height, NotchViewModel.collapsedSize.height)
+
+        viewModel.updateExpandedContentHeight(146)
+        XCTAssertEqual(viewModel.currentSize.height, 146)
+
+        viewModel.updateExpandedContentHeight(900)
+        XCTAssertEqual(viewModel.currentSize.height, SessionListWindowLayout.maximumHeight)
     }
 
     private func makeSession(
