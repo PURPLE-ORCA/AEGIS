@@ -112,6 +112,11 @@ final class CodexDesktopSessionWatcher {
         var tools: [String: String] = [:]
     }
 
+    private struct TurnMetadata {
+        let cwd: String?
+        let model: String?
+    }
+
     private let root: URL
     private let automaticallyMonitorsChanges: Bool
     private let reconciliationSchedule: CodexReconciliationSchedule?
@@ -415,9 +420,21 @@ final class CodexDesktopSessionWatcher {
         guard let line = data.split(separator: 0x0A).first,
               let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
               let payload = object["payload"] as? [String: Any] else { return SessionState() }
+
+        let turnContext = try? ReverseJSONLReader(path: url.path).firstMatch { line -> TurnMetadata? in
+            guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                  object["type"] as? String == "turn_context",
+                  let payload = object["payload"] as? [String: Any] else { return nil }
+            return TurnMetadata(
+                cwd: payload["cwd"] as? String,
+                model: payload["model"] as? String
+            )
+        }.value
+
         return SessionState(
             id: (payload["id"] as? String) ?? (payload["session_id"] as? String),
-            cwd: payload["cwd"] as? String
+            cwd: turnContext?.cwd ?? payload["cwd"] as? String,
+            model: turnContext?.model
         )
     }
 }

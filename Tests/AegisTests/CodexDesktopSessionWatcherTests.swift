@@ -10,6 +10,7 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
         let transcript = root.appendingPathComponent("rollout-session-1.jsonl")
         try writeLines([
             #"{"type":"session_meta","payload":{"id":"session-1","cwd":"/tmp/project"}}"#,
+            #"{"type":"turn_context","payload":{"cwd":"/tmp/project","model":"gpt-5.6-sol"}}"#,
             #"{"type":"event_msg","payload":{"type":"user_message","message":"old prompt"}}"#,
         ], to: transcript)
 
@@ -33,6 +34,7 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
         wait(for: [appended], timeout: 3)
         XCTAssertEqual(messages.map(\.userMessage), ["new prompt"])
         XCTAssertEqual(messages.first?.sessionId, "session-1")
+        XCTAssertEqual(messages.first?.model, "gpt-5.6-sol")
     }
 
     func testNewTranscriptIsDiscoveredWithoutHistoryReplay() throws {
