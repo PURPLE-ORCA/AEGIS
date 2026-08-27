@@ -12,6 +12,9 @@ struct BridgeMessage: Codable {
     let env: [String: String]?
     let userMessage: String?
     let assistantMessage: String?
+    /// Short, public provider progress suitable for transient UI display.
+    /// This must never contain private or encrypted reasoning payloads.
+    let activitySummary: String?
     let effortLevel: String?
     let durationMs: Int?
     /// Structured provider result. Nil means the provider did not expose a
@@ -41,6 +44,7 @@ struct BridgeMessage: Codable {
         env: [String: String]? = nil,
         userMessage: String? = nil,
         assistantMessage: String? = nil,
+        activitySummary: String? = nil,
         effortLevel: String? = nil,
         durationMs: Int? = nil,
         toolOutcome: ToolOutcome? = nil,
@@ -62,6 +66,7 @@ struct BridgeMessage: Codable {
         self.env = env
         self.userMessage = userMessage
         self.assistantMessage = assistantMessage
+        self.activitySummary = activitySummary
         self.effortLevel = effortLevel
         self.durationMs = durationMs
         self.toolOutcome = toolOutcome
@@ -98,6 +103,7 @@ struct BridgeMessage: Codable {
         case env = "_env"
         case userMessage = "user_message"
         case assistantMessage = "assistant_message"
+        case activitySummary = "activity_summary"
         case effortLevel = "effort_level"
         case durationMs = "duration_ms"
         case toolOutcome = "tool_outcome"

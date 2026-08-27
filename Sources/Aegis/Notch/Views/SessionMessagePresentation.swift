@@ -38,15 +38,14 @@ enum SessionCardPresentation {
     static func detail(for session: Session, maximumLength: Int = 400) -> String {
         switch session.status {
         case .toolUse:
-            let currentTool = session.currentTool.map { "Using \($0)" }
             return SessionMessagePresentation.preview(
-                currentTool ?? session.lastAssistantMessage,
+                session.activitySummary ?? session.currentTool.map(SessionActivitySummary.toolLabel) ?? session.lastAssistantMessage,
                 fallback: "Working",
                 maximumLength: maximumLength
             )
         case .thinking:
             return SessionMessagePresentation.preview(
-                session.lastAssistantMessage,
+                session.activitySummary ?? session.lastAssistantMessage,
                 fallback: "Thinking…",
                 maximumLength: maximumLength
             )

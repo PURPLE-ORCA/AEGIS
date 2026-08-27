@@ -49,12 +49,28 @@ final class SessionCardPresentationTests: XCTestCase {
     func testExpandedDetailPrefersCurrentTool() {
         var session = makeSession(status: .toolUse)
         session.currentTool = "Swift compiler"
+        session.activitySummary = "Compiling project"
         session.lastAssistantMessage = "An older reply"
 
         XCTAssertEqual(
             SessionCardPresentation.detail(for: session),
-            "Using Swift compiler"
+            "Compiling project"
         )
+    }
+
+    func testExpandedDetailKeepsLastToolActivityBetweenCalls() {
+        var session = makeSession(status: .thinking)
+        session.activitySummary = "Reading resource"
+        session.lastAssistantMessage = "An older reply"
+
+        XCTAssertEqual(SessionCardPresentation.detail(for: session), "Reading resource")
+    }
+
+    func testToolActivityUsesSafeHumanLabels() {
+        XCTAssertEqual(SessionActivitySummary.toolLabel("functions.exec"), "Running command")
+        XCTAssertEqual(SessionActivitySummary.toolLabel("apply_patch"), "Editing files")
+        XCTAssertEqual(SessionActivitySummary.toolLabel("read_mcp_resource"), "Reading resource")
+        XCTAssertEqual(SessionActivitySummary.toolLabel("custom_tool"), "Using custom tool")
     }
 
     func testExpandedDetailUsesLatestAgentMessageWithoutCurrentTool() {

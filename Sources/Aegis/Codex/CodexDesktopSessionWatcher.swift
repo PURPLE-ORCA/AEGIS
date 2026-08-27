@@ -446,6 +446,9 @@ final class CodexDesktopSessionWatcher {
                 emit(.init(sessionId: sessionId, hookEvent: "UserPromptSubmit", cwd: state.cwd, userMessage: text, sessionTitle: titleResolver.title(for: sessionId), source: "codex", model: state.model))
             case "agent_message":
                 state.lastAssistantMessage = payload["message"] as? String
+                if state.active, let message = state.lastAssistantMessage {
+                    emitActivity(message, sessionId: sessionId, state: state)
+                }
             case "task_complete":
                 state.active = false
                 state.tools.removeAll()
@@ -480,11 +483,27 @@ final class CodexDesktopSessionWatcher {
                     source: "codex",
                     model: state.model
                 ))
+            case "reasoning":
+                guard state.active,
+                      let summary = payload["summary"] as? [[String: Any]],
+                      let text = summary.last(where: { $0["type"] as? String == "summary_text" })?["text"] as? String else { break }
+                emitActivity(text, sessionId: sessionId, state: state)
             default:
                 break
             }
         }
         states[path] = state
+    }
+
+    private func emitActivity(_ summary: String, sessionId: String, state: SessionState) {
+        emit(.init(
+            sessionId: sessionId,
+            hookEvent: "ActivityUpdate",
+            cwd: state.cwd,
+            activitySummary: summary,
+            source: "codex",
+            model: state.model
+        ))
     }
 
     private func emit(_ message: BridgeMessage) {

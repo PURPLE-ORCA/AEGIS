@@ -134,6 +134,8 @@ struct Session: Identifiable {
     var firstPrompt: String?
     var lastUserMessage: String?
     var lastAssistantMessage: String?
+    /// Ephemeral, public progress for the active turn. Never persisted.
+    var activitySummary: String?
     var terminalApp: String?
     var effortLevel: String?
     var lastToolDurationMs: Int?
@@ -230,6 +232,33 @@ struct Session: Identifiable {
         if terminalInfo == nil, source == "codex" { return "Open Codex" }
         if terminalInfo == nil, source == "hermes" { return "Open Hermes" }
         return TerminalJumper.appName(for: terminalInfo?.appBundleId)
+    }
+}
+
+enum SessionActivitySummary {
+    static func toolLabel(_ toolName: String) -> String {
+        let normalized = toolName.lowercased()
+
+        if normalized.contains("apply_patch") { return "Editing files" }
+        if normalized.contains("exec") || normalized.contains("shell") { return "Running command" }
+        if normalized.contains("view_image") { return "Viewing image" }
+        if normalized.contains("imagegen") { return "Generating image" }
+        if normalized.contains("web") || normalized.contains("browser") { return "Browsing the web" }
+        if normalized.contains("read_mcp_resource") { return "Reading resource" }
+        if normalized.contains("update_plan") { return "Updating plan" }
+        if normalized.contains("spawn_agent") { return "Starting subagent" }
+        if normalized.contains("send_message") { return "Messaging subagent" }
+        if normalized.contains("wait") { return "Waiting for result" }
+
+        let component = toolName
+            .split(whereSeparator: { $0 == "." || $0 == "/" })
+            .last
+            .map(String.init) ?? toolName
+        let words = component
+            .replacingOccurrences(of: "__", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return words.isEmpty ? "Using tool" : "Using \(words)"
     }
 }
 

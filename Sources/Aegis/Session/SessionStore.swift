@@ -208,6 +208,7 @@ final class SessionStore: ObservableObject {
     private static let canonicalEvents: Set<String> = [
         "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse",
         "PermissionRequest", "Stop", "Notification", "SubagentStart", "SubagentStop", "PreCompact",
+        "ActivityUpdate",
     ]
 
     func handleMessage(
@@ -220,6 +221,13 @@ final class SessionStore: ObservableObject {
         guard Self.canonicalEvents.contains(message.hookEvent) else {
             Log.info("Ignoring non-canonical event '\(message.hookEvent)' from source=\(message.source ?? "?") session=\(sessionId.prefix(8))")
             return
+        }
+
+        if message.hookEvent == "ActivityUpdate" {
+            guard let existing = sessions[sessionId],
+                  existing.status == .thinking || existing.status == .toolUse,
+                  let summary = Self.normalizedActivitySummary(message.activitySummary),
+                  summary != existing.activitySummary else { return }
         }
 
         if message.hookEvent == "Stop",
@@ -331,6 +339,7 @@ final class SessionStore: ObservableObject {
         case "SessionStart":
             skillIssueDetector.reset(sessionId: sessionId)
             session.status = .idle
+            session.activitySummary = nil
             session.executionState.finish()
             // ensureSession already emitted .sessionStarted for first-time
             // creates. Suppress the redundant SessionStart-hook emit so
@@ -344,6 +353,7 @@ final class SessionStore: ObservableObject {
         case "SessionEnd":
             skillIssueDetector.reset(sessionId: sessionId)
             session.status = .completed
+            session.activitySummary = nil
             session.executionState.finish()
             effects.append(.event(.sessionEnded(sessionId)))
             effects.append(.scheduleRemoval(sessionId: sessionId, delay: 5.0))
@@ -359,6 +369,7 @@ final class SessionStore: ObservableObject {
             }
             session.status = .thinking
             session.currentTool = nil
+            session.activitySummary = nil
             session.executionState.beginTurn()
             recordedExecutionProgress = true
             effects.append(.event(.statusChanged(sessionId, .thinking)))
@@ -367,6 +378,7 @@ final class SessionStore: ObservableObject {
             let toolName = message.toolName ?? "unknown"
             session.status = .toolUse
             session.currentTool = toolName
+            session.activitySummary = SessionActivitySummary.toolLabel(toolName)
             session.executionState.recordProgress()
             recordedExecutionProgress = true
             effects.append(.event(.toolStarted(sessionId, toolName)))
@@ -417,6 +429,11 @@ final class SessionStore: ObservableObject {
             ) {
                 effects.append(.event(.skillIssueDetected(sessionId, toolName)))
             }
+
+        case "ActivityUpdate":
+            session.activitySummary = Self.normalizedActivitySummary(message.activitySummary)
+            session.executionState.recordProgress()
+            recordedExecutionProgress = true
 
         case "PermissionRequest":
             let toolName = message.toolName ?? "unknown"
@@ -505,6 +522,7 @@ final class SessionStore: ObservableObject {
             }
             session.status = .idle
             session.currentTool = nil
+            session.activitySummary = nil
             session.executionState.finish()
             effects.append(.event(.statusChanged(sessionId, .idle)))
 
@@ -517,12 +535,14 @@ final class SessionStore: ObservableObject {
 
         case "SubagentStart":
             session.currentTool = "Agent"
+            session.activitySummary = "Working with subagent"
             session.executionState.beginSubagent()
             recordedExecutionProgress = true
             effects.append(.event(.toolStarted(sessionId, "Agent")))
 
         case "SubagentStop":
             session.currentTool = nil
+            session.activitySummary = "Subagent finished"
             session.executionState.endSubagent()
             recordedExecutionProgress = true
             effects.append(.event(.toolEnded(sessionId, "Agent", nil)))
@@ -569,6 +589,16 @@ final class SessionStore: ObservableObject {
                 scheduleRemoval(sessionId: sessionId, after: delay)
             }
         }
+    }
+
+    private static func normalizedActivitySummary(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let flattened = value
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !flattened.isEmpty else { return nil }
+        return String(flattened.prefix(600))
     }
 
     // MARK: - Question Parsing

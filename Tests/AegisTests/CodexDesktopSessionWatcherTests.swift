@@ -212,6 +212,77 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
         XCTAssertEqual(outcome, .failure)
     }
 
+    func testEmitsPublicAgentAndReasoningActivityWhileTurnIsActive() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transcript = root.appendingPathComponent("rollout-live-activity.jsonl")
+        try writeLines([
+            #"{"type":"session_meta","payload":{"id":"live-activity","cwd":"/tmp/project"}}"#,
+        ], to: transcript)
+
+        let watcher = CodexDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil
+        )
+        let started = expectation(description: "watcher started")
+        let received = expectation(description: "activity updates")
+        received.expectedFulfillmentCount = 2
+        var summaries: [String] = []
+        watcher.onMessage = { message in
+            guard message.hookEvent == "ActivityUpdate", let summary = message.activitySummary else { return }
+            summaries.append(summary)
+            received.fulfill()
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started], timeout: 3)
+        defer { watcher.stop() }
+
+        try appendLines([
+            #"{"type":"event_msg","payload":{"type":"task_started"}}"#,
+            #"{"type":"event_msg","payload":{"type":"agent_message","message":"Checking the existing API contract."}}"#,
+            #"{"type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Reading the affected session code."}]}}"#,
+        ], to: transcript)
+        watcher.reconcileNow()
+
+        wait(for: [received], timeout: 3)
+        XCTAssertEqual(summaries, [
+            "Checking the existing API contract.",
+            "Reading the affected session code.",
+        ])
+    }
+
+    func testDoesNotEmitReasoningWithoutPublicSummaryText() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transcript = root.appendingPathComponent("rollout-private-reasoning.jsonl")
+        try writeLines([
+            #"{"type":"session_meta","payload":{"id":"private-reasoning","cwd":"/tmp/project"}}"#,
+        ], to: transcript)
+
+        let watcher = CodexDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil
+        )
+        let started = expectation(description: "watcher started")
+        var activityCount = 0
+        watcher.onMessage = { message in
+            if message.hookEvent == "ActivityUpdate" { activityCount += 1 }
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started], timeout: 3)
+        defer { watcher.stop() }
+
+        try appendLines([
+            #"{"type":"event_msg","payload":{"type":"task_started"}}"#,
+            #"{"type":"response_item","payload":{"type":"reasoning","summary":[]}}"#,
+        ], to: transcript)
+        watcher.reconcileNow()
+
+        XCTAssertEqual(activityCount, 0)
+    }
+
     func testPolicyUsesOneSecondOnlyWhileActive() {
         let schedule = CodexReconciliationSchedule(
             activeInterval: 1,

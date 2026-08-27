@@ -137,6 +137,43 @@ final class SessionStorePublicationTests: XCTestCase {
     }
 
     @MainActor
+    func testActivityUpdatesAreEphemeralAndIgnoreLateOrDuplicateContent() {
+        let store = SessionStore()
+        store.handleMessage(message(event: "ActivityUpdate", activitySummary: "Too early"), respond: nil)
+        XCTAssertNil(store.sessions[Self.sessionId])
+
+        store.handleMessage(message(event: "UserPromptSubmit", userMessage: "Start"), respond: nil)
+        store.handleMessage(message(event: "ActivityUpdate", activitySummary: "  Checking\nfiles  "), respond: nil)
+        XCTAssertEqual(store.sessions[Self.sessionId]?.activitySummary, "Checking files")
+
+        var publications = 0
+        let cancellable = store.$sessions.dropFirst().sink { _ in publications += 1 }
+        store.handleMessage(message(event: "ActivityUpdate", activitySummary: "Checking files"), respond: nil)
+        XCTAssertEqual(publications, 0)
+
+        store.handleMessage(message(event: "Stop", assistantMessage: "Done"), respond: nil)
+        XCTAssertNil(store.sessions[Self.sessionId]?.activitySummary)
+        store.handleMessage(message(event: "ActivityUpdate", activitySummary: "Too late"), respond: nil)
+        XCTAssertNil(store.sessions[Self.sessionId]?.activitySummary)
+        withExtendedLifetime(cancellable) {}
+    }
+
+    @MainActor
+    func testToolActivityRemainsVisibleBetweenToolCalls() {
+        let store = SessionStore()
+        store.handleMessage(message(event: "UserPromptSubmit", userMessage: "Start"), respond: nil)
+        store.handleMessage(message(event: "PreToolUse", toolName: "functions.exec"), respond: nil)
+
+        XCTAssertEqual(store.sessions[Self.sessionId]?.status, .toolUse)
+        XCTAssertEqual(store.sessions[Self.sessionId]?.activitySummary, "Running command")
+
+        store.handleMessage(message(event: "PostToolUse", toolName: "functions.exec"), respond: nil)
+
+        XCTAssertEqual(store.sessions[Self.sessionId]?.status, .thinking)
+        XCTAssertEqual(store.sessions[Self.sessionId]?.activitySummary, "Running command")
+    }
+
+    @MainActor
     func testThreeExplicitSameToolFailuresEmitOneSkillIssueEvent() {
         let store = SessionStore()
         var detectedTools: [String] = []
@@ -165,6 +202,7 @@ final class SessionStorePublicationTests: XCTestCase {
         assistantMessage: String? = nil,
         toolName: String? = nil,
         toolInput: String? = nil,
+        activitySummary: String? = nil,
         toolOutcome: ToolOutcome? = nil
     ) -> BridgeMessage {
         BridgeMessage(
@@ -175,6 +213,7 @@ final class SessionStorePublicationTests: XCTestCase {
             toolInput: toolInput,
             userMessage: userMessage,
             assistantMessage: assistantMessage,
+            activitySummary: activitySummary,
             toolOutcome: toolOutcome,
             source: "codex"
         )
