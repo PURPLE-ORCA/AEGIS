@@ -50,6 +50,16 @@ final class SessionListProjectionTests: XCTestCase {
         )
     }
 
+    func testProviderFilterMetadataIsIconButtonAccessible() {
+        let all = SessionProviderFilterMetadata(provider: nil, isSelected: true)
+        XCTAssertEqual(all.accessibilityLabel, "Show all sessions")
+        XCTAssertEqual(all.accessibilityValue, "Selected")
+
+        let codex = SessionProviderFilterMetadata(provider: .codex, isSelected: false)
+        XCTAssertEqual(codex.accessibilityLabel, "Show Codex sessions")
+        XCTAssertEqual(codex.accessibilityValue, "Not selected")
+    }
+
     @MainActor
     func testExpandedWindowTracksMeasuredContentHeight() {
         let viewModel = NotchViewModel()

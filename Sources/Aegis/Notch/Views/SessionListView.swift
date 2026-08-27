@@ -47,7 +47,7 @@ struct SessionListView: View {
 
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                // Top row: rate limits + sound + gear
+                // Top row: rate limits + provider filters + sound + gear
                 HStack(spacing: 8) {
                     RateLimitBar(
                         rateLimitStore: rateLimitStore,
@@ -55,45 +55,41 @@ struct SessionListView: View {
                         onTap: { cycleRateLimitProvider(current: displayedRateLimitProvider) }
                     )
                     Spacer()
-                    Button(action: { settingsStore.soundEnabled.toggle() }) {
-                        Image(systemName: settingsStore.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(settingsStore.soundEnabled ? 0.6 : 0.3))
-                            .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
+
+                    if projection.presentProviders.count >= 2 {
+                        HStack(spacing: 2) {
+                            providerFilterButton(provider: nil)
+                            ForEach(projection.presentProviders) { provider in
+                                providerFilterButton(provider: provider)
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(settingsStore.soundEnabled ? "Mute sounds" : "Unmute sounds")
-                    Button(action: onOpenSettings) {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(0.4))
-                            .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
+
+                    HStack(spacing: 0) {
+                        Button(action: { settingsStore.soundEnabled.toggle() }) {
+                            Image(systemName: settingsStore.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white.opacity(settingsStore.soundEnabled ? 0.6 : 0.3))
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(settingsStore.soundEnabled ? "Mute sounds" : "Unmute sounds")
+
+                        Button(action: onOpenSettings) {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white.opacity(0.4))
+                                .frame(width: 28, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open settings")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open settings")
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
                 .padding(.bottom, 6)
-
-                // Filter chips — only show when there are >=2 providers active.
-                // Horizontally scrollable so many providers (we support a dozen+)
-                // keep their natural width instead of compressing into slivers.
-                if projection.presentProviders.count >= 2 {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 5) {
-                            filterChip(provider: nil, label: "ALL", count: sessionStore.activeSessions.count, color: .white)
-                            ForEach(projection.presentProviders) { p in
-                                filterChip(provider: p, label: p.displayName.uppercased(), count: projection.sessions(for: p).count, color: p.accentColor)
-                            }
-                        }
-                        .padding(.horizontal, 14)
-                    }
-                    .padding(.top, 8)
-                    .padding(.bottom, 6)
-                }
             }
             .background {
                 GeometryReader { geometry in
@@ -207,29 +203,39 @@ struct SessionListView: View {
         )
     }
 
-    @ViewBuilder
-    private func filterChip(provider: AIProvider?, label: String, count: Int, color: Color) -> some View {
+    private func providerFilterButton(provider: AIProvider?) -> some View {
         let isSelected = selectedProvider?.id == provider?.id
-        Button(action: { selectedProvider = provider }) {
-            HStack(spacing: 5) {
-                if let p = provider {
-                    ProviderIcon(provider: p, size: 13)
+        let color = provider?.accentColor ?? .white
+        let metadata = SessionProviderFilterMetadata(
+            provider: provider,
+            isSelected: isSelected
+        )
+
+        return Button(action: { selectedProvider = provider }) {
+            Group {
+                if let provider {
+                    ProviderIcon(provider: provider, size: 14)
+                } else {
+                    Image(systemName: "square.grid.2x2.fill")
+                        .font(.system(size: 12, weight: .semibold))
                 }
-                Text(label)
-                    .font(theme.font(size: 10, weight: .heavy))
-                    .foregroundColor(isSelected ? color : color.opacity(0.55))
-                    .kerning(0.8)
-                    .lineLimit(1)
-                    .fixedSize()
-                Text("\(count)")
-                    .font(theme.font(size: 9, weight: .bold))
-                    .foregroundColor(isSelected ? color.opacity(0.85) : color.opacity(0.4))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .notchPill(theme, fill: isSelected ? color.opacity(0.14) : color.opacity(0.05), stroke: isSelected ? color.opacity(0.4) : nil, base: 6)
+            .foregroundColor(isSelected ? color : color.opacity(0.5))
+            .frame(width: 28, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isSelected ? color.opacity(0.14) : color.opacity(0.04))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(isSelected ? color.opacity(0.4) : .clear, lineWidth: 1)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(metadata.accessibilityLabel)
+        .accessibilityValue(metadata.accessibilityValue)
+        .help(metadata.accessibilityLabel)
     }
 
     @ViewBuilder
@@ -251,6 +257,16 @@ struct SessionListView: View {
                 .foregroundColor(.white.opacity(0.4))
                 .rotationEffect(.degrees(collapsed ? 0 : 90))
         }
+    }
+}
+
+struct SessionProviderFilterMetadata: Equatable {
+    let accessibilityLabel: String
+    let accessibilityValue: String
+
+    init(provider: AIProvider?, isSelected: Bool) {
+        accessibilityLabel = provider.map { "Show \($0.displayName) sessions" } ?? "Show all sessions"
+        accessibilityValue = isSelected ? "Selected" : "Not selected"
     }
 }
 

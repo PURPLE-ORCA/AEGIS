@@ -6,7 +6,7 @@ struct RateLimitBar: View {
     var provider: AIProvider = .codex
     /// Optional tap handler — when set, the bar becomes a button that cycles
     /// to the next provider. Used in SessionListView to let users flip
-    /// between available provider snapshots without touching the filter chips.
+    /// between available provider snapshots without touching the provider filter.
     var onTap: (() -> Void)? = nil
     @Environment(\.notchTheme) private var theme
 
@@ -33,44 +33,44 @@ struct RateLimitBar: View {
 
             if let fh = snapshot.fiveHour {
                 Text(fh.windowLabel)
-                    .font(theme.font(size: 10, weight: .bold))
+                    .font(theme.font(size: 11, weight: .bold))
                     .foregroundColor(.white.opacity(0.5))
                 Text("\(fh.remainingPercentage)% left")
-                    .font(theme.font(size: 10, weight: .bold))
+                    .font(theme.font(size: 11, weight: .bold))
                     .foregroundColor(colorForRemaining(fh.remainingPercentage))
                 Text(fh.timeRemaining)
-                    .font(theme.font(size: 10))
+                    .font(theme.font(size: 11))
                     .foregroundColor(.white.opacity(0.4))
             }
 
             if snapshot.fiveHour != nil && snapshot.sevenDay != nil {
                 Text("|")
-                    .font(theme.font(size: 10))
+                    .font(theme.font(size: 11))
                     .foregroundColor(.white.opacity(0.2))
             }
 
             if let sd = snapshot.sevenDay {
                 Text(sd.windowLabel)
-                    .font(theme.font(size: 10, weight: .bold))
+                    .font(theme.font(size: 11, weight: .bold))
                     .foregroundColor(.white.opacity(0.5))
                 Text("\(sd.remainingPercentage)% left")
-                    .font(theme.font(size: 10, weight: .bold))
+                    .font(theme.font(size: 11, weight: .bold))
                     .foregroundColor(colorForRemaining(sd.remainingPercentage))
                 Text(sd.timeRemaining)
-                    .font(theme.font(size: 10))
+                    .font(theme.font(size: 11))
                     .foregroundColor(.white.opacity(0.4))
             }
 
             if let runway = snapshot.runway {
                 Text("|")
-                    .font(theme.font(size: 10))
+                    .font(theme.font(size: 11))
                     .foregroundColor(.white.opacity(0.2))
                 Text("RUNWAY")
-                    .font(theme.font(size: 8, weight: .heavy))
+                    .font(theme.font(size: 9, weight: .heavy))
                     .foregroundColor(.white.opacity(0.4))
                     .kerning(0.6)
                 Text(runway.status.label)
-                    .font(theme.font(size: 10, weight: .bold))
+                    .font(theme.font(size: 11, weight: .bold))
                     .foregroundColor(color(for: runway.status))
                     .help("Quota runway based on the \(runway.windowLabel) window")
                     .accessibilityLabel("Quota runway \(runway.status.label)")
@@ -80,7 +80,7 @@ struct RateLimitBar: View {
             // compact hint instead of an empty row so users know why it's blank.
             if snapshot.fiveHour == nil && snapshot.sevenDay == nil {
                 Text(snapshot.error ?? "—")
-                    .font(theme.font(size: 9))
+                    .font(theme.font(size: 10))
                     .foregroundColor(.white.opacity(0.35))
             }
         }
