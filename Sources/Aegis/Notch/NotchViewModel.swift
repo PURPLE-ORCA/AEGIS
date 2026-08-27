@@ -140,6 +140,13 @@ final class NotchViewModel: ObservableObject {
         presentedState != .collapsed
     }
 
+    /// While AppKit contracts the island shell, the outgoing view stays
+    /// mounted for transition bookkeeping but must not receive narrowing
+    /// widths that cause its text to reflow.
+    var hidesOutgoingContentDuringCollapse: Bool {
+        state == .collapsed && presentedState != .collapsed
+    }
+
     // MARK: - Auto-collapse
     private var autoCollapseTask: Task<Void, Never>?
     private var finishedAutoCollapseDeadline: Date?

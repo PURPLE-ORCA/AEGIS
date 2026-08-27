@@ -38,6 +38,8 @@ struct NotchContentView: View {
 
             content
                 .clipped()
+                .opacity(viewModel.hidesOutgoingContentDuringCollapse ? 0 : 1)
+                .animation(nil, value: viewModel.hidesOutgoingContentDuringCollapse)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(NotchShape(cornerRadius: viewModel.isPresentingExpandedContent ? 20 : 14))

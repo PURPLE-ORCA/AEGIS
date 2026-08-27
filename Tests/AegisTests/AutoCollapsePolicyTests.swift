@@ -3,8 +3,13 @@ import XCTest
 
 @MainActor
 final class AutoCollapsePolicyTests: XCTestCase {
-    func testPanelCollapsesAtomicallyAndKeepsSmoothExpansion() {
-        XCTAssertEqual(NotchPanelTransitionPolicy.duration(for: .collapsed), 0)
+    func testPanelUsesBriefCollapseAndKeepsSmoothExpansion() {
+        XCTAssertEqual(NotchMotion.panelCollapseDuration, 0.12)
+        XCTAssertEqual(NotchMotion.panelResizeDuration, 0.20)
+        XCTAssertEqual(
+            NotchPanelTransitionPolicy.duration(for: .collapsed),
+            NotchMotion.panelCollapseDuration
+        )
         XCTAssertEqual(
             NotchPanelTransitionPolicy.duration(for: .expanded),
             NotchMotion.panelResizeDuration
@@ -47,14 +52,18 @@ final class AutoCollapsePolicyTests: XCTestCase {
         let viewModel = NotchViewModel()
         viewModel.expand()
 
+        XCTAssertFalse(viewModel.hidesOutgoingContentDuringCollapse)
+
         viewModel.collapse()
 
         XCTAssertEqual(viewModel.state, .collapsed)
         XCTAssertEqual(viewModel.presentedState, .expanded)
+        XCTAssertTrue(viewModel.hidesOutgoingContentDuringCollapse)
 
         viewModel.completeCollapsePresentation()
 
         XCTAssertEqual(viewModel.presentedState, .collapsed)
+        XCTAssertFalse(viewModel.hidesOutgoingContentDuringCollapse)
     }
 
     func testNewPresentationInterruptsPendingCollapse() {
@@ -63,6 +72,9 @@ final class AutoCollapsePolicyTests: XCTestCase {
         viewModel.collapse()
 
         viewModel.showPermission(sessionId: "permission")
+
+        XCTAssertFalse(viewModel.hidesOutgoingContentDuringCollapse)
+
         viewModel.completeCollapsePresentation()
 
         XCTAssertEqual(viewModel.state, .permission(sessionId: "permission"))
