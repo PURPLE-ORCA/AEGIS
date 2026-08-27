@@ -57,7 +57,7 @@ struct SessionListView: View {
                     Spacer()
 
                     if projection.presentProviders.count >= 2 {
-                        HStack(spacing: 2) {
+                        HStack(spacing: 3) {
                             providerFilterButton(provider: nil)
                             ForEach(projection.presentProviders) { provider in
                                 providerFilterButton(provider: provider)
@@ -214,23 +214,23 @@ struct SessionListView: View {
         return Button(action: { selectedProvider = provider }) {
             Group {
                 if let provider {
-                    ProviderIcon(provider: provider, size: 14)
+                    ProviderIcon(provider: provider, size: 11)
                 } else {
                     Image(systemName: "square.grid.2x2.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 9, weight: .semibold))
                 }
             }
             .foregroundColor(isSelected ? color : color.opacity(0.5))
-            .frame(width: 28, height: 28)
+            .frame(width: 22, height: 22)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                Circle()
                     .fill(isSelected ? color.opacity(0.14) : color.opacity(0.04))
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                Circle()
                     .stroke(isSelected ? color.opacity(0.4) : .clear, lineWidth: 1)
             }
-            .contentShape(Rectangle())
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(metadata.accessibilityLabel)
