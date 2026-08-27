@@ -20,9 +20,17 @@ enum SessionMessagePresentation {
 
 enum SessionCardPresentation {
     static func compactTitle(for session: Session, maximumLength: Int = 80) -> String {
-        SessionMessagePresentation.preview(
-            session.displayName,
-            fallback: session.projectName,
+        let title = [session.sessionTitle, session.firstPrompt]
+            .compactMap { value -> String? in
+                guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !trimmed.isEmpty else { return nil }
+                return trimmed
+            }
+            .first
+
+        return SessionMessagePresentation.preview(
+            title,
+            fallback: "Untitled session",
             maximumLength: maximumLength
         )
     }
