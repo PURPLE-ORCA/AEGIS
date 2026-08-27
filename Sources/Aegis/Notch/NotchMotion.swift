@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum NotchMotion {
+    static let panelResizeDuration: TimeInterval = 0.28
     static let sessionCardHoverDelay: TimeInterval = 0.08
     static let sessionCardMorphDuration: TimeInterval = 0.18
     static let reducedMotionDuration: TimeInterval = 0.12
@@ -11,6 +12,13 @@ enum NotchMotion {
 
     static var reducedSessionCard: Animation {
         .easeOut(duration: reducedMotionDuration)
+    }
+
+    /// Smoothstep gives frequent island resizing a short, non-bouncy
+    /// ease-in-out curve without creating a persistent physics simulation.
+    static func panelResizeProgress(_ progress: Double) -> Double {
+        let clamped = min(max(progress, 0), 1)
+        return clamped * clamped * (3 - 2 * clamped)
     }
 }
 

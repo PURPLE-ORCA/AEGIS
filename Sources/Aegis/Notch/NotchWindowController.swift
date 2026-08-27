@@ -3,9 +3,8 @@ import SwiftUI
 import Combine
 
 enum NotchPanelTransitionPolicy {
-    static func duration(for state: NotchState) -> TimeInterval {
-        if case .collapsed = state { return 0 }
-        return 0.32
+    static func duration(for _: NotchState) -> TimeInterval {
+        NotchMotion.panelResizeDuration
     }
 }
 
@@ -184,10 +183,12 @@ final class NotchWindowController: NSWindowController {
 
     private var animationDisplayLink: CADisplayLink?
     private var animationStart: CFTimeInterval = 0
-    private var animationDuration: TimeInterval = 0.32
+    private var animationDuration: TimeInterval = NotchMotion.panelResizeDuration
     private var animationStartSize: NSSize = .zero
     private var animationDeltaW: CGFloat = 0
     private var animationDeltaH: CGFloat = 0
+    private var animationCompletion: (() -> Void)?
+    private var awaitsInitialExpandedMeasurement = false
 
     private func reconcileWindowPresence(state: NotchState) {
         guard let panel = window else { return }
@@ -210,29 +211,41 @@ final class NotchWindowController: NSWindowController {
                 (panel as? NotchPanel)?.applyNotchLevel()
             }
         } else {
-            animationDisplayLink?.invalidate()
-            animationDisplayLink = nil
+            cancelPanelAnimation()
+            if case .collapsed = state {
+                viewModel.completeCollapsePresentation()
+            }
             panel.orderOut(nil)
         }
     }
 
     private func repositionWindow(for state: NotchState? = nil) {
         guard let panel = window else { return }
-        let target = viewModel.currentSize
         let transitionState = state ?? viewModel.state
+
+        if case .expanded = transitionState,
+           viewModel.dynamicExpandedHeight == nil {
+            // Expanded content must be mounted before SwiftUI can report its
+            // fitted height. Hold the current frame for that one measurement,
+            // then resize width and height as a single continuity transition.
+            cancelPanelAnimation()
+            awaitsInitialExpandedMeasurement = true
+            anchorCurrentFrameToScreenTop(panel)
+            return
+        }
+
+        awaitsInitialExpandedMeasurement = false
+        let target = viewModel.currentSize
         // Always snap the window to the (possibly new) notch screen's
         // top-center first. Without this, a resolution change that
         // doesn't alter our panel size leaves the window pinned at its
         // old absolute coordinates — i.e. off-screen on the new
         // resolution. Then run the size animation as usual.
-        let screen = ScreenDetector.notchScreen.frame
-        let cur = panel.frame.size
-        let x = screen.midX - cur.width / 2
-        let y = screen.maxY - cur.height
-        panel.setFrame(NSRect(x: x, y: y, width: cur.width, height: cur.height), display: true)
+        anchorCurrentFrameToScreenTop(panel)
         animatePanelToSize(
             target,
-            duration: NotchPanelTransitionPolicy.duration(for: transitionState)
+            duration: NotchPanelTransitionPolicy.duration(for: transitionState),
+            completion: collapseCompletion(for: transitionState)
         )
     }
 
@@ -240,10 +253,17 @@ final class NotchWindowController: NSWindowController {
         guard case .expanded = viewModel.state,
               let panel = window else { return }
 
-        animationDisplayLink?.invalidate()
-        animationDisplayLink = nil
-
         let target = viewModel.currentSize
+        if awaitsInitialExpandedMeasurement {
+            awaitsInitialExpandedMeasurement = false
+            animatePanelToSize(
+                target,
+                duration: NotchPanelTransitionPolicy.duration(for: .expanded)
+            )
+            return
+        }
+
+        cancelPanelAnimation()
         let screen = ScreenDetector.notchScreen.frame
         panel.setFrame(
             NSRect(
@@ -264,11 +284,11 @@ final class NotchWindowController: NSWindowController {
     /// touched the main thread mid-expand.
     private func animatePanelToSize(
         _ targetSize: NSSize,
-        duration: TimeInterval
+        duration: TimeInterval,
+        completion: (() -> Void)? = nil
     ) {
         guard let panel = window else { return }
-        animationDisplayLink?.invalidate()
-        animationDisplayLink = nil
+        cancelPanelAnimation()
 
         if duration == 0 || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             let screen = ScreenDetector.notchScreen.frame
@@ -281,19 +301,24 @@ final class NotchWindowController: NSWindowController {
                 ),
                 display: false
             )
+            completion?()
             return
         }
 
         let startSize = panel.frame.size
         let dw = targetSize.width - startSize.width
         let dh = targetSize.height - startSize.height
-        if abs(dw) < 0.5 && abs(dh) < 0.5 { return }
+        if abs(dw) < 0.5 && abs(dh) < 0.5 {
+            completion?()
+            return
+        }
 
         animationStart = CACurrentMediaTime()
         animationDuration = duration
         animationStartSize = startSize
         animationDeltaW = dw
         animationDeltaH = dh
+        animationCompletion = completion
 
         let link = panel.displayLink(target: self, selector: #selector(stepAnimation(_:)))
         link.add(to: .main, forMode: .common)
@@ -308,8 +333,7 @@ final class NotchWindowController: NSWindowController {
         }
         let elapsed = CACurrentMediaTime() - animationStart
         let t = min(elapsed / animationDuration, 1.0)
-        // Smooth ease-out cubic — fast start, gentle settle
-        let eased = 1.0 - pow(1.0 - t, 3.0)
+        let eased = NotchMotion.panelResizeProgress(t)
         let w = animationStartSize.width + animationDeltaW * eased
         let h = animationStartSize.height + animationDeltaH * eased
         let screen = ScreenDetector.notchScreen.frame
@@ -322,7 +346,37 @@ final class NotchWindowController: NSWindowController {
         if t >= 1.0 {
             link.invalidate()
             animationDisplayLink = nil
+            let completion = animationCompletion
+            animationCompletion = nil
+            completion?()
         }
+    }
+
+    private func cancelPanelAnimation() {
+        animationDisplayLink?.invalidate()
+        animationDisplayLink = nil
+        animationCompletion = nil
+    }
+
+    private func collapseCompletion(for state: NotchState) -> (() -> Void)? {
+        guard case .collapsed = state else { return nil }
+        return { [weak self] in
+            self?.viewModel.completeCollapsePresentation()
+        }
+    }
+
+    private func anchorCurrentFrameToScreenTop(_ panel: NSWindow) {
+        let screen = ScreenDetector.notchScreen.frame
+        let size = panel.frame.size
+        panel.setFrame(
+            NSRect(
+                x: screen.midX - size.width / 2,
+                y: screen.maxY - size.height,
+                width: size.width,
+                height: size.height
+            ),
+            display: false
+        )
     }
 
     private func computePermissionHeight(sessionId: String) -> CGFloat {

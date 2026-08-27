@@ -3,9 +3,69 @@ import XCTest
 
 @MainActor
 final class AutoCollapsePolicyTests: XCTestCase {
-    func testCollapsedStateSnapsWindowToMatchCompactContent() {
-        XCTAssertEqual(NotchPanelTransitionPolicy.duration(for: .collapsed), 0)
-        XCTAssertEqual(NotchPanelTransitionPolicy.duration(for: .expanded), 0.32)
+    func testPanelUsesShortContinuousResizeInBothDirections() {
+        XCTAssertEqual(
+            NotchPanelTransitionPolicy.duration(for: .collapsed),
+            NotchMotion.panelResizeDuration
+        )
+        XCTAssertEqual(
+            NotchPanelTransitionPolicy.duration(for: .expanded),
+            NotchMotion.panelResizeDuration
+        )
+        XCTAssertEqual(NotchMotion.panelResizeProgress(0), 0)
+        XCTAssertEqual(NotchMotion.panelResizeProgress(0.5), 0.5)
+        XCTAssertEqual(NotchMotion.panelResizeProgress(1), 1)
+    }
+
+    func testInteractionTimingsMatchFinishedAndMouseExitPolicy() {
+        XCTAssertEqual(NotchViewModel.finishedCardVisibilityDuration, 6)
+        XCTAssertEqual(NotchViewModel.finishedHoverCeiling, 30)
+        XCTAssertEqual(
+            NotchViewModel.autoCollapseDelayAfterMouseExit(for: .expanded),
+            0
+        )
+        XCTAssertEqual(
+            NotchViewModel.autoCollapseDelayAfterMouseExit(
+                for: .finished(sessionId: "session")
+            ),
+            0
+        )
+        XCTAssertNil(
+            NotchViewModel.autoCollapseDelayAfterMouseExit(
+                for: .permission(sessionId: "session")
+            )
+        )
+        XCTAssertNil(
+            NotchViewModel.autoCollapseDelayAfterMouseExit(
+                for: .question(sessionId: "session")
+            )
+        )
+    }
+
+    func testCollapseKeepsOutgoingContentMountedUntilResizeCompletes() {
+        let viewModel = NotchViewModel()
+        viewModel.expand()
+
+        viewModel.collapse()
+
+        XCTAssertEqual(viewModel.state, .collapsed)
+        XCTAssertEqual(viewModel.presentedState, .expanded)
+
+        viewModel.completeCollapsePresentation()
+
+        XCTAssertEqual(viewModel.presentedState, .collapsed)
+    }
+
+    func testNewPresentationInterruptsPendingCollapse() {
+        let viewModel = NotchViewModel()
+        viewModel.expand()
+        viewModel.collapse()
+
+        viewModel.showPermission(sessionId: "permission")
+        viewModel.completeCollapsePresentation()
+
+        XCTAssertEqual(viewModel.state, .permission(sessionId: "permission"))
+        XCTAssertEqual(viewModel.presentedState, .permission(sessionId: "permission"))
     }
 
     func testHoveredFinishedCardRearmsBeforeDeadline() {

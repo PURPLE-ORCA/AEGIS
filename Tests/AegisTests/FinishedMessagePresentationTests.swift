@@ -64,6 +64,11 @@ final class FinishedMessagePresentationTests: XCTestCase {
 
         viewModel.collapse()
 
+        XCTAssertEqual(viewModel.presentedState, .finished(sessionId: session.id))
+        XCTAssertEqual(viewModel.finishedSessionSnapshot?.lastAssistantMessage, "The retained reply")
+
+        viewModel.completeCollapsePresentation()
+
         XCTAssertNil(viewModel.finishedSessionSnapshot)
     }
 

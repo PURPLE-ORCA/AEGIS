@@ -17,10 +17,17 @@ final class NotchViewModel: ObservableObject {
         case pause
     }
 
-    static let finishedHoverCeiling: TimeInterval = 15
+    static let expandedMouseExitDelay: TimeInterval = 0
+    static let finishedCardVisibilityDuration: TimeInterval = 6
+    static let finishedHoverCeiling: TimeInterval = 30
+    static let autoCollapseRearmInterval: TimeInterval = 0.6
 
     // MARK: - Published State
     @Published var state: NotchState = .collapsed
+    /// Content currently mounted in SwiftUI. During collapse this deliberately
+    /// trails `state` until AppKit reaches the compact frame, preventing the
+    /// expanded panel from becoming empty while it is still visibly large.
+    @Published private(set) var presentedState: NotchState = .collapsed
     @Published var isHovered = false
     /// A completion notification outlives the provider's live session entry.
     /// Keep the value snapshot that triggered the popup so a fast session
@@ -129,6 +136,10 @@ final class NotchViewModel: ObservableObject {
         state != .collapsed
     }
 
+    var isPresentingExpandedContent: Bool {
+        presentedState != .collapsed
+    }
+
     // MARK: - Auto-collapse
     private var autoCollapseTask: Task<Void, Never>?
     private var finishedAutoCollapseDeadline: Date?
@@ -137,16 +148,24 @@ final class NotchViewModel: ObservableObject {
     func expand(holdSeconds: Double? = nil) {
         guard state == .collapsed else { return }
         dynamicExpandedHeight = nil
+        presentedState = .expanded
         state = .expanded
-        scheduleAutoCollapse(delay: holdSeconds ?? 0.6)
+        scheduleAutoCollapse(delay: holdSeconds ?? Self.autoCollapseRearmInterval)
     }
 
     func collapse() {
         guard state != .collapsed else { return }
         state = .collapsed
-        finishedSessionSnapshot = nil
         finishedAutoCollapseDeadline = nil
         autoCollapseTask?.cancel()
+    }
+
+    /// Called by the window controller only after the compact frame is in
+    /// place. If another presentation interrupted the shrink, its content wins.
+    func completeCollapsePresentation() {
+        guard state == .collapsed else { return }
+        presentedState = .collapsed
+        finishedSessionSnapshot = nil
     }
 
     func toggle() {
@@ -183,35 +202,41 @@ final class NotchViewModel: ObservableObject {
         finishedAutoCollapseDeadline = Date().addingTimeInterval(Self.finishedHoverCeiling)
         finishedSessionSnapshot = session
         dynamicFinishedHeight = Self.finishedSize.height
-        state = .finished(sessionId: session.id)
-        scheduleAutoCollapse(delay: 3.0)
+        let finishedState = NotchState.finished(sessionId: session.id)
+        presentedState = finishedState
+        state = finishedState
+        scheduleAutoCollapse(delay: Self.finishedCardVisibilityDuration)
     }
 
     func showPermission(sessionId: String, contentHeight: CGFloat? = nil) {
         autoCollapseTask?.cancel()
         finishedSessionSnapshot = nil
         dynamicPermissionHeight = contentHeight
-        state = .permission(sessionId: sessionId)
+        let permissionState = NotchState.permission(sessionId: sessionId)
+        presentedState = permissionState
+        state = permissionState
     }
 
     func dismissPermission() {
-        state = .collapsed
+        collapse()
     }
 
     func showQuestion(sessionId: String) {
         autoCollapseTask?.cancel()
         finishedSessionSnapshot = nil
         suppressedQuestionSessionIDs.remove(sessionId)
-        state = .question(sessionId: sessionId)
+        let questionState = NotchState.question(sessionId: sessionId)
+        presentedState = questionState
+        state = questionState
     }
 
     func dismissQuestion() {
-        state = .collapsed
+        collapse()
     }
 
     func suppressQuestion(sessionId: String) {
         suppressedQuestionSessionIDs.insert(sessionId)
-        state = .collapsed
+        collapse()
     }
 
     /// Called after a user closes an expanded reply. It starts a fresh bounded
@@ -219,10 +244,10 @@ final class NotchViewModel: ObservableObject {
     func resumeFinishedAutoCollapse() {
         guard case .finished = state else { return }
         finishedAutoCollapseDeadline = Date().addingTimeInterval(Self.finishedHoverCeiling)
-        scheduleAutoCollapse(delay: 3.0)
+        scheduleAutoCollapse(delay: Self.finishedCardVisibilityDuration)
     }
 
-    private func scheduleAutoCollapse(delay: Double = 0.6) {
+    private func scheduleAutoCollapse(delay: Double) {
         autoCollapseTask?.cancel()
         autoCollapseTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(delay))
@@ -256,9 +281,18 @@ final class NotchViewModel: ObservableObject {
             guard let finishedDeadline else { return .collapse }
             let remaining = finishedDeadline.timeIntervalSince(now)
             guard remaining > 0 else { return .collapse }
-            return isHovered ? .rearm(min(0.6, remaining)) : .collapse
+            return isHovered ? .rearm(min(Self.autoCollapseRearmInterval, remaining)) : .collapse
         case .expanded:
-            return isHovered ? .rearm(0.6) : .collapse
+            return isHovered ? .rearm(Self.autoCollapseRearmInterval) : .collapse
+        }
+    }
+
+    static func autoCollapseDelayAfterMouseExit(for state: NotchState) -> TimeInterval? {
+        switch state {
+        case .expanded, .finished:
+            return Self.expandedMouseExitDelay
+        case .collapsed, .permission, .question:
+            return nil
         }
     }
 
@@ -271,15 +305,7 @@ final class NotchViewModel: ObservableObject {
 
     func mouseExited() {
         isHovered = false
-        // Never auto-collapse permission/question states — user must respond
-        switch state {
-        case .permission, .question:
-            return
-        default:
-            break
-        }
-        if isExpanded {
-            scheduleAutoCollapse()
-        }
+        guard let delay = Self.autoCollapseDelayAfterMouseExit(for: state) else { return }
+        scheduleAutoCollapse(delay: delay)
     }
 }

@@ -26,8 +26,8 @@ struct NotchContentView: View {
         ZStack {
             NotchBackground(
                 theme: theme,
-                isExpanded: viewModel.isExpanded,
-                cornerRadius: viewModel.isExpanded ? 20 : 17,
+                isExpanded: viewModel.isPresentingExpandedContent,
+                cornerRadius: viewModel.isPresentingExpandedContent ? 20 : 17,
                 drawBorder: false,
                 creatureLens: spiderLens,
                 // Legs only twitch while something is actually running — an idle
@@ -40,13 +40,13 @@ struct NotchContentView: View {
                 .clipped()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipShape(NotchShape(cornerRadius: viewModel.isExpanded ? 20 : 14))
+        .clipShape(NotchShape(cornerRadius: viewModel.isPresentingExpandedContent ? 20 : 14))
         // Window edge border ON TOP of the content so cards/wells that reach the
         // panel bottom tuck under it instead of spilling over the rounded edge
         // (z-order fix — most visible with the thick Pixel/Brutalist borders).
         .overlay {
-            if viewModel.isExpanded, theme.windowStroke != nil {
-                NotchBorderShape(cornerRadius: viewModel.isExpanded ? 20 : 14)
+            if viewModel.isPresentingExpandedContent, theme.windowStroke != nil {
+                NotchBorderShape(cornerRadius: viewModel.isPresentingExpandedContent ? 20 : 14)
                     .stroke(theme.windowStroke ?? .clear, lineWidth: theme.windowStrokeWidth * 2)
             }
         }
@@ -104,7 +104,7 @@ struct NotchContentView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch viewModel.state {
+        switch viewModel.presentedState {
         case .collapsed:
             Button(action: activateCollapsed) {
                 CollapsedNotchView(sessionStore: sessionStore, rateLimitStore: rateLimitStore)
