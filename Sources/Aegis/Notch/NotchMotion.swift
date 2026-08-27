@@ -3,6 +3,7 @@ import SwiftUI
 enum NotchMotion {
     static let panelResizeDuration: TimeInterval = 0.28
     static let sessionCardHoverDelay: TimeInterval = 0.08
+    static let sessionCardHoverExitGrace: TimeInterval = 0.06
     static let sessionCardMorphDuration: TimeInterval = 0.18
     static let reducedMotionDuration: TimeInterval = 0.12
 

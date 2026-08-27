@@ -7,6 +7,7 @@ struct SessionCardView: View {
     var onDone: (() -> Void)? = nil
 
     @State private var isHovering = false
+    @State private var isPointerHovering = false
     @State private var hoverExpansionTask: Task<Void, Never>?
     @State private var detailContentHeight: CGFloat = 0
 
@@ -74,7 +75,7 @@ struct SessionCardView: View {
                         .frame(height: detailPresentation.height, alignment: .top)
                         .opacity(detailPresentation.opacity)
                         .clipped()
-                        .allowsHitTesting(showsDetails)
+                        .allowsHitTesting(false)
                 }
             }
             .clipped()
@@ -83,7 +84,9 @@ struct SessionCardView: View {
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityLabel("Open \(session.provider.displayName) session \(session.displayName)")
+        .accessibilityLabel(
+            "Open \(session.provider.displayName) session \(SessionCardPresentation.compactTitle(for: session))"
+        )
         .accessibilityValue(SessionCardPresentation.detail(for: session))
         .accessibilityHint("Opens this session in its app or terminal when activated.")
         .onPreferenceChange(SessionCardDetailHeightKey.self) { height in
@@ -91,26 +94,26 @@ struct SessionCardView: View {
             detailContentHeight = height
         }
         .onHover { hovering in
+            isPointerHovering = hovering
             hoverExpansionTask?.cancel()
-            hoverExpansionTask = nil
 
-            if hovering {
-                hoverExpansionTask = Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(NotchMotion.sessionCardHoverDelay))
-                    guard !Task.isCancelled else { return }
+            let delay = hovering
+                ? NotchMotion.sessionCardHoverDelay
+                : NotchMotion.sessionCardHoverExitGrace
+            hoverExpansionTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled, isPointerHovering == hovering else { return }
 
-                    withAnimation(morphAnimation) {
-                        isHovering = true
-                    }
-                    hoverExpansionTask = nil
-                }
-            } else {
                 withAnimation(morphAnimation) {
-                    isHovering = false
+                    isHovering = hovering
                 }
+                hoverExpansionTask = nil
             }
         }
-        .onDisappear { hoverExpansionTask?.cancel() }
+        .onDisappear {
+            hoverExpansionTask?.cancel()
+            hoverExpansionTask = nil
+        }
     }
 
     private var compactMessage: some View {
