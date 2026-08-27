@@ -3,8 +3,9 @@ import SwiftUI
 import Combine
 
 enum NotchPanelTransitionPolicy {
-    static func duration(for _: NotchState) -> TimeInterval {
-        NotchMotion.panelResizeDuration
+    static func duration(for state: NotchState) -> TimeInterval {
+        if case .collapsed = state { return 0 }
+        return NotchMotion.panelResizeDuration
     }
 }
 

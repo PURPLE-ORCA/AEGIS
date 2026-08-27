@@ -41,33 +41,48 @@ struct FinishedView: View {
         VStack(spacing: 0) {
             Spacer(minLength: NotchViewModel.notchOverlap + 8)
 
-            Button(action: { setExpanded(true) }) {
-                HStack(alignment: .center, spacing: 12) {
-                    SessionMascot(
-                        status: .idle,
-                        size: 24,
-                        animated: false,
-                        provider: session.provider
-                    )
+            HStack(spacing: 0) {
+                Button(action: { TerminalJumper.jump(to: session) }) {
+                    HStack(alignment: .center, spacing: 12) {
+                        SessionMascot(
+                            status: .idle,
+                            size: 24,
+                            animated: false,
+                            provider: session.provider
+                        )
 
-                    Text(MarkdownText.inline(FinishedMessagePresentation.preview(for: session)))
-                        .font(theme.font(size: 12, weight: .medium))
-                        .foregroundColor(theme.cardForeground.opacity(0.90))
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(2)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(MarkdownText.inline(FinishedMessagePresentation.preview(for: session)))
+                            .font(theme.font(size: 12, weight: .medium))
+                            .foregroundColor(theme.cardForeground.opacity(0.90))
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.leading, 14)
+                    .padding(.vertical, 11)
+                    .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-                .notchCard(theme, tint: session.provider.accentColor)
-                .contentShape(RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous))
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open \(session.provider.displayName) session")
+                .accessibilityValue(FinishedMessagePresentation.preview(for: session))
+                .accessibilityHint("Opens this session in its app or terminal")
+
+                Button(action: { setExpanded(true) }) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(theme.cardForeground.opacity(0.58))
+                        .frame(width: 40, height: 50)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show full reply")
+                .accessibilityHint("Expands the finished session details")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Message from \(session.provider.displayName)")
-            .accessibilityValue(FinishedMessagePresentation.preview(for: session))
-            .accessibilityHint("Shows the full reply and session details")
+            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+            .notchCard(theme, tint: session.provider.accentColor)
+            .contentShape(RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous))
             .padding(.horizontal, 14)
             .padding(.bottom, 12)
         }
