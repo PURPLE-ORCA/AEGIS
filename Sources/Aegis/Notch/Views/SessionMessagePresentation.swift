@@ -20,7 +20,7 @@ enum SessionMessagePresentation {
 
 enum SessionCardPresentation {
     static func compactTitle(for session: Session, maximumLength: Int = 80) -> String {
-        let title = [session.sessionTitle, session.firstPrompt]
+        let title = [session.lastUserMessage, session.sessionTitle, session.firstPrompt]
             .compactMap { value -> String? in
                 guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
                       !trimmed.isEmpty else { return nil }

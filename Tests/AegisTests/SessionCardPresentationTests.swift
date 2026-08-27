@@ -2,10 +2,22 @@ import XCTest
 @testable import Aegis
 
 final class SessionCardPresentationTests: XCTestCase {
-    func testCompactTitlePrefersProviderSessionTitle() {
+    func testCompactTitlePrefersCurrentRunMessage() {
         var session = makeSession(status: .thinking)
+        session.lastUserMessage = "  Fix the current run  "
         session.sessionTitle = "  Provider task title  "
         session.firstPrompt = "Fallback prompt"
+
+        XCTAssertEqual(
+            SessionCardPresentation.compactTitle(for: session),
+            "Fix the current run"
+        )
+    }
+
+    func testCompactTitleFallsBackToProviderSessionTitle() {
+        var session = makeSession(status: .thinking)
+        session.sessionTitle = "  Provider task title  "
+        session.firstPrompt = "  Make the session cards compact  "
 
         XCTAssertEqual(
             SessionCardPresentation.compactTitle(for: session),
@@ -15,6 +27,7 @@ final class SessionCardPresentationTests: XCTestCase {
 
     func testCompactTitleFallsBackToFirstPrompt() {
         var session = makeSession(status: .thinking)
+        session.lastUserMessage = " \n "
         session.sessionTitle = " \n "
         session.firstPrompt = "  Make the session cards compact  "
 
