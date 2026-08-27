@@ -208,6 +208,9 @@ final class NotchWindowController: NSWindowController {
             activeSessionCount: activeSessionCount
         ) {
             if !panel.isVisible {
+                if case .collapsed = state {
+                    snapPanelToCollapsedFrame(panel)
+                }
                 panel.orderFrontRegardless()
                 (panel as? NotchPanel)?.applyNotchLevel()
             }
@@ -215,6 +218,7 @@ final class NotchWindowController: NSWindowController {
             cancelPanelAnimation()
             if case .collapsed = state {
                 viewModel.completeCollapsePresentation()
+                snapPanelToCollapsedFrame(panel)
             }
             panel.orderOut(nil)
         }
@@ -369,6 +373,21 @@ final class NotchWindowController: NSWindowController {
     private func anchorCurrentFrameToScreenTop(_ panel: NSWindow) {
         let screen = ScreenDetector.notchScreen.frame
         let size = panel.frame.size
+        panel.setFrame(
+            NSRect(
+                x: screen.midX - size.width / 2,
+                y: screen.maxY - size.height,
+                width: size.width,
+                height: size.height
+            ),
+            display: false
+        )
+    }
+
+    private func snapPanelToCollapsedFrame(_ panel: NSWindow) {
+        cancelPanelAnimation()
+        let screen = ScreenDetector.notchScreen.frame
+        let size = NotchViewModel.collapsedSize
         panel.setFrame(
             NSRect(
                 x: screen.midX - size.width / 2,
