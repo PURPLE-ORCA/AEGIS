@@ -2,8 +2,46 @@ import Foundation
 import XCTest
 @testable import Aegis
 import AegisBridgeSupport
+import SQLite3
 
 final class CodexDesktopSessionWatcherTests: XCTestCase {
+    func testPropagatesLatestResolvedTitleOnEachEmittedEvent() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transcript = root.appendingPathComponent("rollout-titled.jsonl")
+        try writeLines([
+            #"{"type":"session_meta","payload":{"id":"titled","cwd":"/tmp/project"}}"#,
+        ], to: transcript)
+        let resolver = SequenceCodexTitleResolver(["First task name", "Renamed task"])
+        let watcher = CodexDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil,
+            titleResolver: resolver
+        )
+        let started = expectation(description: "watcher started")
+        let received = expectation(description: "titled events")
+        received.expectedFulfillmentCount = 2
+        var titles: [String?] = []
+        watcher.onMessage = { message in
+            titles.append(message.sessionTitle)
+            received.fulfill()
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started], timeout: 3)
+        defer { watcher.stop() }
+
+        try appendLines([
+            #"{"type":"event_msg","payload":{"type":"task_started"}}"#,
+            #"{"type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"call-1"}}"#,
+        ], to: transcript)
+        watcher.reconcileNow()
+
+        wait(for: [received], timeout: 3)
+        XCTAssertEqual(titles.compactMap { $0 }, ["First task name", "Renamed task"])
+        XCTAssertEqual(resolver.callCount, 2)
+    }
+
     func testExistingTranscriptStartsAtEndThenEmitsAppendedEvent() throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -285,5 +323,73 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
         try handle.seekToEnd()
         try handle.write(contentsOf: Data((lines.joined(separator: "\n") + "\n").utf8))
         try handle.close()
+    }
+}
+
+private final class SequenceCodexTitleResolver: CodexSessionTitleResolving {
+    private let titles: [String?]
+    private(set) var callCount = 0
+
+    init(_ titles: [String?]) {
+        self.titles = titles
+    }
+
+    func title(for _: String) -> String? {
+        defer { callCount += 1 }
+        return callCount < titles.count ? titles[callCount] : titles.last ?? nil
+    }
+}
+
+final class SQLiteCodexSessionTitleResolverTests: XCTestCase {
+    func testPrefersTrimmedNameThenFallsBackToTrimmedTitle() throws {
+        let databaseURL = try makeDatabase(
+            schema: "CREATE TABLE threads (id TEXT PRIMARY KEY, name TEXT, title TEXT NOT NULL)",
+            inserts: [
+                "INSERT INTO threads VALUES ('named', '  Product session  ', 'Transcript title')",
+                "INSERT INTO threads VALUES ('untitled', '  ', '  Fallback title  ')",
+            ]
+        )
+        defer { try? FileManager.default.removeItem(at: databaseURL.deletingLastPathComponent()) }
+        let resolver = SQLiteCodexSessionTitleResolver(databaseURL: databaseURL)
+
+        XCTAssertEqual(resolver.title(for: "named"), "Product session")
+        XCTAssertEqual(resolver.title(for: "untitled"), "Fallback title")
+    }
+
+    func testSupportsLegacySchemaAndMissingStateGracefully() throws {
+        let databaseURL = try makeDatabase(
+            schema: "CREATE TABLE threads (id TEXT PRIMARY KEY, title TEXT NOT NULL)",
+            inserts: ["INSERT INTO threads VALUES ('legacy', '  Legacy title  ')"]
+        )
+        let directory = databaseURL.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let resolver = SQLiteCodexSessionTitleResolver(databaseURL: databaseURL)
+
+        XCTAssertEqual(resolver.title(for: "legacy"), "Legacy title")
+        XCTAssertNil(resolver.title(for: "missing"))
+        XCTAssertNil(
+            SQLiteCodexSessionTitleResolver(
+                databaseURL: directory.appendingPathComponent("missing.sqlite")
+            ).title(for: "legacy")
+        )
+    }
+
+    private func makeDatabase(schema: String, inserts: [String]) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("aegis-codex-title-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("state.sqlite")
+        var database: OpaquePointer?
+        guard sqlite3_open(url.path, &database) == SQLITE_OK, let database else {
+            throw NSError(domain: "SQLiteCodexSessionTitleResolverTests", code: 1)
+        }
+        defer { sqlite3_close(database) }
+
+        for statement in [schema] + inserts {
+            guard sqlite3_exec(database, statement, nil, nil, nil) == SQLITE_OK else {
+                throw NSError(domain: "SQLiteCodexSessionTitleResolverTests", code: 2)
+            }
+        }
+        return url
     }
 }

@@ -1,5 +1,86 @@
 import Foundation
 import AegisBridgeSupport
+import SQLite3
+
+protocol CodexSessionTitleResolving {
+    func title(for sessionId: String) -> String?
+}
+
+struct SQLiteCodexSessionTitleResolver: CodexSessionTitleResolving {
+    private enum QueryResult {
+        case prepared(String?)
+        case unavailable
+    }
+
+    let databaseURL: URL
+
+    init(
+        databaseURL: URL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/state_5.sqlite")
+    ) {
+        self.databaseURL = databaseURL
+    }
+
+    func title(for sessionId: String) -> String? {
+        var database: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
+        guard sqlite3_open_v2(databaseURL.path, &database, flags, nil) == SQLITE_OK,
+              let database else {
+            if let database { sqlite3_close(database) }
+            return nil
+        }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 100)
+
+        switch query(
+            database,
+            sql: "SELECT name, title FROM threads WHERE id = ? LIMIT 1",
+            sessionId: sessionId,
+            columns: [0, 1]
+        ) {
+        case .prepared(let title):
+            return title
+        case .unavailable:
+            break
+        }
+
+        // `name` was added after the original state database schema. A failed
+        // prepare falls back to the stable title column for older installs.
+        switch query(
+            database,
+            sql: "SELECT title FROM threads WHERE id = ? LIMIT 1",
+            sessionId: sessionId,
+            columns: [0]
+        ) {
+        case .prepared(let title): return title
+        case .unavailable: return nil
+        }
+    }
+
+    private func query(
+        _ database: OpaquePointer,
+        sql: String,
+        sessionId: String,
+        columns: [Int32]
+    ) -> QueryResult {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else { return .unavailable }
+        defer { sqlite3_finalize(statement) }
+
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        guard sqlite3_bind_text(statement, 1, sessionId, -1, transient) == SQLITE_OK,
+              sqlite3_step(statement) == SQLITE_ROW else { return .prepared(nil) }
+
+        for column in columns {
+            guard sqlite3_column_type(statement, column) != SQLITE_NULL,
+                  let value = sqlite3_column_text(statement, column) else { continue }
+            let title = String(cString: value).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty { return .prepared(title) }
+        }
+        return .prepared(nil)
+    }
+}
 
 enum CodexReconciliationScope: Hashable {
     case active
@@ -122,6 +203,7 @@ final class CodexDesktopSessionWatcher {
     private let root: URL
     private let automaticallyMonitorsChanges: Bool
     private let reconciliationSchedule: CodexReconciliationSchedule?
+    private let titleResolver: any CodexSessionTitleResolving
     private let queue = DispatchQueue(label: "dev.aegis.app.codex-desktop", qos: .utility)
     private var monitor: FileEventMonitor?
     private var reconciliationTimer: DispatchSourceTimer?
@@ -133,11 +215,13 @@ final class CodexDesktopSessionWatcher {
     init(
         root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions"),
         automaticallyMonitorsChanges: Bool = true,
-        reconciliationSchedule: CodexReconciliationSchedule? = .standard
+        reconciliationSchedule: CodexReconciliationSchedule? = .standard,
+        titleResolver: any CodexSessionTitleResolving = SQLiteCodexSessionTitleResolver()
     ) {
         self.root = root.resolvingSymlinksInPath().standardizedFileURL
         self.automaticallyMonitorsChanges = automaticallyMonitorsChanges
         self.reconciliationSchedule = reconciliationSchedule
+        self.titleResolver = titleResolver
     }
 
     func start(completion: (() -> Void)? = nil) {
@@ -356,21 +440,21 @@ final class CodexDesktopSessionWatcher {
                 state.active = true
                 state.lastAssistantMessage = nil
                 state.tools.removeAll()
-                emit(.init(sessionId: sessionId, hookEvent: "UserPromptSubmit", cwd: state.cwd, source: "codex", model: state.model))
+                emit(.init(sessionId: sessionId, hookEvent: "UserPromptSubmit", cwd: state.cwd, sessionTitle: titleResolver.title(for: sessionId), source: "codex", model: state.model))
             case "user_message":
                 let text = payload["message"] as? String
-                emit(.init(sessionId: sessionId, hookEvent: "UserPromptSubmit", cwd: state.cwd, userMessage: text, source: "codex", model: state.model))
+                emit(.init(sessionId: sessionId, hookEvent: "UserPromptSubmit", cwd: state.cwd, userMessage: text, sessionTitle: titleResolver.title(for: sessionId), source: "codex", model: state.model))
             case "agent_message":
                 state.lastAssistantMessage = payload["message"] as? String
             case "task_complete":
                 state.active = false
                 state.tools.removeAll()
                 let message = (payload["last_agent_message"] as? String) ?? state.lastAssistantMessage
-                emit(.init(sessionId: sessionId, hookEvent: "Stop", cwd: state.cwd, assistantMessage: message, durationMs: payload["duration_ms"] as? Int, source: "codex", model: state.model))
+                emit(.init(sessionId: sessionId, hookEvent: "Stop", cwd: state.cwd, assistantMessage: message, durationMs: payload["duration_ms"] as? Int, sessionTitle: titleResolver.title(for: sessionId), source: "codex", model: state.model))
             case "turn_aborted":
                 state.active = false
                 state.tools.removeAll()
-                emit(.init(sessionId: sessionId, hookEvent: "Stop", cwd: state.cwd, source: "codex", model: state.model))
+                emit(.init(sessionId: sessionId, hookEvent: "Stop", cwd: state.cwd, sessionTitle: titleResolver.title(for: sessionId), source: "codex", model: state.model))
             default:
                 break
             }
@@ -381,7 +465,7 @@ final class CodexDesktopSessionWatcher {
                 let name = payload["name"] as? String ?? "Tool"
                 if let callId { state.tools[callId] = name }
                 let input = (payload["input"] as? String) ?? (payload["arguments"] as? String)
-                emit(.init(sessionId: sessionId, hookEvent: "PreToolUse", cwd: state.cwd, toolName: name, toolInput: input, source: "codex", model: state.model))
+                emit(.init(sessionId: sessionId, hookEvent: "PreToolUse", cwd: state.cwd, toolName: name, toolInput: input, sessionTitle: titleResolver.title(for: sessionId), source: "codex", model: state.model))
             case "custom_tool_call_output", "function_call_output":
                 let name = callId.flatMap { state.tools.removeValue(forKey: $0) } ?? "Tool"
                 let outcome = StructuredToolOutcomeDetector.explicitOutcome(from: payload["output"])
@@ -392,6 +476,7 @@ final class CodexDesktopSessionWatcher {
                     cwd: state.cwd,
                     toolName: name,
                     toolOutcome: outcome,
+                    sessionTitle: titleResolver.title(for: sessionId),
                     source: "codex",
                     model: state.model
                 ))
