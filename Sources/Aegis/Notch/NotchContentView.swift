@@ -133,14 +133,15 @@ struct NotchContentView: View {
                 ?? viewModel.finishedSessionSnapshot {
                 FinishedView(
                     session: session,
-                    onDismiss: { viewModel.collapse() },
+                    onOpenSession: {
+                        TerminalJumper.jump(to: session)
+                        viewModel.collapse()
+                    },
                     rateLimitStore: rateLimitStore,
                     settingsStore: settingsStore,
                     onOpenSettings: onOpenSettings,
                     onToggleExpand: { expanded in
-                        if expanded {
-                            viewModel.cancelAutoCollapse()
-                        } else {
+                        if !expanded {
                             viewModel.dynamicFinishedHeight = NotchViewModel.finishedSize.height
                             viewModel.resumeFinishedAutoCollapse()
                         }
@@ -149,6 +150,7 @@ struct NotchContentView: View {
                         viewModel.updateFinishedContentHeight(height)
                     }
                 )
+                .id(session.id)
             } else {
                 Color.clear
                     .onAppear { viewModel.collapse() }

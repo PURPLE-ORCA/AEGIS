@@ -18,7 +18,7 @@ final class NotchViewModel: ObservableObject {
     }
 
     static let expandedMouseExitDelay: TimeInterval = 0
-    static let finishedCardVisibilityDuration: TimeInterval = 6
+    static let finishedCardVisibilityDuration: TimeInterval = 10
     static let finishedHoverCeiling: TimeInterval = 30
     static let autoCollapseRearmInterval: TimeInterval = 0.6
 
@@ -183,10 +183,6 @@ final class NotchViewModel: ObservableObject {
         }
     }
 
-    func cancelAutoCollapse() {
-        autoCollapseTask?.cancel()
-    }
-
     func updateFinishedContentHeight(_ height: CGFloat) {
         let fitted = FinishedReplyWindowLayout.fittedHeight(height)
         guard abs((dynamicFinishedHeight ?? Self.finishedSize.height) - fitted) > 0.5 else { return }
@@ -296,9 +292,9 @@ final class NotchViewModel: ObservableObject {
 
     static func autoCollapseDelayAfterMouseExit(for state: NotchState) -> TimeInterval? {
         switch state {
-        case .expanded, .finished:
+        case .expanded:
             return Self.expandedMouseExitDelay
-        case .collapsed, .permission, .question:
+        case .collapsed, .finished, .permission, .question:
             return nil
         }
     }

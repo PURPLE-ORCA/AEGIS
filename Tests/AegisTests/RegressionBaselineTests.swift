@@ -37,6 +37,34 @@ final class RegressionBaselineTests: XCTestCase {
         XCTAssertEqual(after, "After")
     }
 
+    func testFinishedReplyMarkdownPreservesStructuredBlocks() {
+        let markdown = """
+        # Finished
+
+        - [x] Tests pass
+
+        ```swift
+        let status = "ready"
+        ```
+
+        Ready to ship.
+        """
+        let blocks = MarkdownText.blocks(from: markdown)
+
+        XCTAssertEqual(blocks.count, 4)
+        guard case .header(let level, let title) = blocks[0],
+              case .text(let task) = blocks[1],
+              case .code(let code) = blocks[2],
+              case .text(let conclusion) = blocks[3] else {
+            return XCTFail("Expected heading, task, code, and prose blocks")
+        }
+        XCTAssertEqual(level, 1)
+        XCTAssertEqual(title, "Finished")
+        XCTAssertEqual(task, "- [x] Tests pass")
+        XCTAssertEqual(code, "let status = \"ready\"")
+        XCTAssertEqual(conclusion, "Ready to ship.")
+    }
+
     @MainActor
     func testPermissionHeightIsBounded() {
         let compact = NotchViewModel.computePermissionHeight(

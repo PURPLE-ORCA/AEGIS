@@ -2,7 +2,7 @@ import SwiftUI
 
 struct FinishedView: View {
     let session: Session
-    let onDismiss: () -> Void
+    let onOpenSession: () -> Void
     @ObservedObject var rateLimitStore: RateLimitStore
     @ObservedObject var settingsStore: SettingsStore
     let onOpenSettings: () -> Void
@@ -10,7 +10,7 @@ struct FinishedView: View {
     let onContentHeightChange: (CGFloat) -> Void
 
     @Environment(\.notchTheme) private var theme
-    @State private var isExpanded = false
+    @State private var isExpanded = true
     @State private var measuredReplyHeight = FinishedReplyWindowLayout.initialReplyHeight
 
     var body: some View {
@@ -35,14 +35,14 @@ struct FinishedView: View {
         }
     }
 
-    /// The completion popup starts as one glanceable object: agent + reply.
-    /// Everything else is deliberately deferred until the user asks for it.
+    /// The user can collapse the automatic full-reply presentation into this
+    /// glanceable card without losing the session jump action.
     private var compactMessage: some View {
         VStack(spacing: 0) {
             Spacer(minLength: NotchViewModel.notchOverlap + 8)
 
             HStack(spacing: 0) {
-                Button(action: { TerminalJumper.jump(to: session) }) {
+                Button(action: onOpenSession) {
                     HStack(alignment: .center, spacing: 12) {
                         SessionMascot(
                             status: .idle,
@@ -127,129 +127,100 @@ struct FinishedView: View {
             .padding(.top, 10)
             .padding(.bottom, 6)
 
-            HStack(spacing: 8) {
-                SessionMascot(status: .idle, size: 18, provider: session.provider)
-                Text(session.displayName)
-                    .font(theme.font(size: 13, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .bold))
-                    Text("Finished in \(session.durationText)")
-                        .font(theme.font(size: 9, weight: .semibold))
-                }
-                .foregroundColor(.green)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .notchPill(theme, fill: .green.opacity(0.18))
-                Spacer()
-                if let effort = session.effortLevel {
-                    EffortBadge(level: effort)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 12)
-            .padding(.bottom, 10)
+            Button(action: onOpenSession) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 8) {
+                        SessionMascot(status: .idle, size: 18, provider: session.provider)
+                        Text(session.displayName)
+                            .font(theme.font(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                            Text("Finished in \(session.durationText)")
+                                .font(theme.font(size: 9, weight: .semibold))
+                        }
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .notchPill(theme, fill: .green.opacity(0.18))
+                        Spacer()
+                        if let effort = session.effortLevel {
+                            EffortBadge(level: effort)
+                        }
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.45))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 12)
+                    .padding(.bottom, 10)
 
-            if let userMsg = session.lastUserMessage {
-                HStack(spacing: 7) {
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(theme.wellForeground.opacity(0.65))
-                    Text("you")
-                        .font(theme.font(size: 9, weight: .bold))
-                        .foregroundColor(theme.wellForeground.opacity(0.5))
-                        .kerning(0.5)
-                    Text(userMsg)
-                        .font(theme.font(size: 11))
-                        .foregroundColor(theme.wellForeground.opacity(0.8))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .notchBox(theme)
-                .padding(.horizontal, 14)
-                .padding(.bottom, 8)
-            }
-
-            if let reply = session.lastAssistantMessage, !reply.isEmpty {
-                VStack(spacing: 0) {
-                    HStack {
-                        HStack(spacing: 5) {
-                            Image(systemName: "bubble.left")
-                                .font(.system(size: 9))
-                                .foregroundColor(.green.opacity(0.7))
-                            Text("reply")
+                    if let userMsg = session.lastUserMessage {
+                        HStack(spacing: 7) {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(theme.wellForeground.opacity(0.65))
+                            Text("you")
                                 .font(theme.font(size: 9, weight: .bold))
                                 .foregroundColor(theme.wellForeground.opacity(0.5))
                                 .kerning(0.5)
+                            Text(userMsg)
+                                .font(theme.font(size: 11))
+                                .foregroundColor(theme.wellForeground.opacity(0.8))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                         }
-                        Spacer()
-                        Text(replyMetric(reply))
-                            .font(theme.font(size: 9))
-                            .foregroundColor(theme.wellForeground.opacity(0.4))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(
-                        UnevenRoundedRectangle(topLeadingRadius: theme.boxRadius, topTrailingRadius: theme.boxRadius)
-                            .fill(theme.boxFill)
-                    )
-
-                    ScrollView(showsIndicators: false) {
-                        MarkdownText(
-                            text: reply,
-                            color: theme.wellForeground.opacity(0.85),
-                            codeBackground: theme.lightWells ? Color.black.opacity(0.07) : Color.black.opacity(0.35)
-                        )
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background {
-                            GeometryReader { geometry in
-                                Color.clear.preference(
-                                    key: FinishedReplyContentHeightKey.self,
-                                    value: geometry.size.height
-                                )
+                        .notchBox(theme)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 8)
+                    }
+
+                    if let reply = session.lastAssistantMessage, !reply.isEmpty {
+                        ScrollView(showsIndicators: false) {
+                            MarkdownText(
+                                text: reply,
+                                color: theme.wellForeground.opacity(0.85),
+                                codeBackground: theme.lightWells ? Color.black.opacity(0.07) : Color.black.opacity(0.35)
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background {
+                                GeometryReader { geometry in
+                                    Color.clear.preference(
+                                        key: FinishedReplyContentHeightKey.self,
+                                        value: geometry.size.height
+                                    )
+                                }
                             }
                         }
+                        .frame(height: FinishedReplyWindowLayout.replyViewportHeight(
+                            contentHeight: measuredReplyHeight
+                        ))
+                        .background(
+                            RoundedRectangle(cornerRadius: theme.boxRadius, style: .continuous)
+                                .fill(theme.boxFill)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: theme.boxRadius, style: .continuous)
+                                .strokeBorder(theme.boxStroke, lineWidth: 1)
+                        )
+                        .padding(.horizontal, 14)
                     }
-                    .frame(height: FinishedReplyWindowLayout.replyViewportHeight(
-                        contentHeight: measuredReplyHeight
-                    ))
-                    .background(
-                        UnevenRoundedRectangle(bottomLeadingRadius: theme.boxRadius, bottomTrailingRadius: theme.boxRadius)
-                            .fill(theme.boxFill)
-                    )
-                }
-                .overlay(
-                    RoundedRectangle(cornerRadius: theme.boxRadius, style: .continuous)
-                        .strokeBorder(theme.boxStroke, lineWidth: 1)
-                )
-                .padding(.horizontal, 14)
-            }
 
-            Color.clear.frame(height: 10)
-
-            let dismissInk = theme.buttonInk(.green)
-            Button(action: onDismiss) {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Dismiss")
-                        .font(theme.font(size: 11, weight: .semibold))
+                    Color.clear.frame(height: 12)
                 }
-                .foregroundColor(dismissInk.text)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 9)
-                .notchButton(theme, fill: dismissInk.fill, stroke: dismissInk.stroke)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .contentShape(Rectangle())
-            .padding(.horizontal, 14)
-            .padding(.bottom, 12)
+            .accessibilityLabel("Open \(session.provider.displayName) session \(session.displayName)")
+            .accessibilityValue(FinishedMessagePresentation.preview(for: session))
+            .accessibilityHint("Opens this session in its app or terminal")
         }
         .fixedSize(horizontal: false, vertical: true)
         .background {
@@ -269,13 +240,6 @@ struct FinishedView: View {
         onToggleExpand(expanded)
     }
 
-    private func replyMetric(_ reply: String) -> String {
-        let lines = reply.components(separatedBy: "\n").count
-        let bytes = reply.utf8.count
-        let lineLabel = "\(lines) line\(lines == 1 ? "" : "s")"
-        let byteLabel = bytes >= 1024 ? String(format: "%.1fkB", Double(bytes) / 1024.0) : "\(bytes)B"
-        return "\(lineLabel) · \(byteLabel)"
-    }
 }
 
 enum FinishedReplyWindowLayout {
