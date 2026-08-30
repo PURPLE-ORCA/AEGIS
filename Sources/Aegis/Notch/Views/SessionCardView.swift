@@ -216,13 +216,6 @@ private struct SessionCardDetailHeightKey: PreferenceKey {
     }
 }
 
-/// One shared ~6Hz tick drives every "thinking" sparkle in lockstep. A
-/// `repeatForever` animation interpolates at the display's 60–120Hz and a
-/// transparent overlay recomposites its whole area on each frame — so N pulsing
-/// cards used to mean N×120 full-window repaints/sec. Stepping discretely (and
-/// in sync) cuts that to ~6 repaints/sec total, regardless of card count.
-private let sparklePulseClock = Timer.publish(every: 0.16, on: .main, in: .common).autoconnect()
-
 /// Pulsing/rotating sparkle used as the "thinking" indicator on the session card.
 struct AnimatedSparkle: View {
     let color: Color
@@ -241,7 +234,7 @@ struct AnimatedSparkle: View {
             .scaleEffect(Self.scales[phase])
             .opacity(Self.opacities[phase])
             .rotationEffect(.degrees(Self.angles[phase]))
-            .onReceive(sparklePulseClock) { _ in
+            .onReceive(mascotAnimationClock) { _ in
                 phase = (phase + 1) % 4
             }
     }

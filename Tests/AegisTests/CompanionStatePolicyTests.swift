@@ -2,6 +2,25 @@ import XCTest
 @testable import Aegis
 
 final class CompanionStatePolicyTests: XCTestCase {
+    func testCompanionWindowExistsOnlyWhileFeatureIsEnabled() {
+        XCTAssertEqual(
+            CompanionWindowLifecyclePolicy.action(isEnabled: false, hasController: false),
+            .none
+        )
+        XCTAssertEqual(
+            CompanionWindowLifecyclePolicy.action(isEnabled: true, hasController: false),
+            .create
+        )
+        XCTAssertEqual(
+            CompanionWindowLifecyclePolicy.action(isEnabled: true, hasController: true),
+            .none
+        )
+        XCTAssertEqual(
+            CompanionWindowLifecyclePolicy.action(isEnabled: false, hasController: true),
+            .destroy
+        )
+    }
+
     func testIdleWhenNoSessionsExist() {
         XCTAssertEqual(
             CompanionStatePolicy.resolve(statuses: [], hasSessions: false, transient: nil),
