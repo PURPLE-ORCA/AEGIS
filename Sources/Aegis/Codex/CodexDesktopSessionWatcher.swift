@@ -1,18 +1,20 @@
 import Foundation
 import AegisBridgeSupport
+import Darwin
 import SQLite3
 
 protocol CodexSessionTitleResolving {
     func title(for sessionId: String) -> String?
 }
 
-struct SQLiteCodexSessionTitleResolver: CodexSessionTitleResolving {
+final class SQLiteCodexSessionTitleResolver: CodexSessionTitleResolving {
     private enum QueryResult {
         case prepared(String?)
         case unavailable
     }
 
     let databaseURL: URL
+    private var database: OpaquePointer?
 
     init(
         databaseURL: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -21,16 +23,12 @@ struct SQLiteCodexSessionTitleResolver: CodexSessionTitleResolving {
         self.databaseURL = databaseURL
     }
 
+    deinit {
+        if let database { sqlite3_close(database) }
+    }
+
     func title(for sessionId: String) -> String? {
-        var database: OpaquePointer?
-        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
-        guard sqlite3_open_v2(databaseURL.path, &database, flags, nil) == SQLITE_OK,
-              let database else {
-            if let database { sqlite3_close(database) }
-            return nil
-        }
-        defer { sqlite3_close(database) }
-        sqlite3_busy_timeout(database, 100)
+        guard let database = openDatabase() else { return nil }
 
         switch query(
             database,
@@ -55,6 +53,20 @@ struct SQLiteCodexSessionTitleResolver: CodexSessionTitleResolving {
         case .prepared(let title): return title
         case .unavailable: return nil
         }
+    }
+
+    private func openDatabase() -> OpaquePointer? {
+        if let database { return database }
+        var connection: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
+        guard sqlite3_open_v2(databaseURL.path, &connection, flags, nil) == SQLITE_OK,
+              let connection else {
+            if let connection { sqlite3_close(connection) }
+            return nil
+        }
+        sqlite3_busy_timeout(connection, 100)
+        database = connection
+        return connection
     }
 
     private func query(
@@ -95,7 +107,10 @@ struct CodexReconciliationSchedule: Equatable {
 
     static let standard = CodexReconciliationSchedule(
         activeInterval: 1,
-        recentDiscoveryInterval: 10,
+        // FSEvents can coalesce or drop a transcript append. Keep a bounded
+        // one-second size reconciliation over only the two newest date leaves
+        // so a new turn never inherits the old ten-second detection delay.
+        recentDiscoveryInterval: 1,
         fullAuditInterval: 300
     )
 }
@@ -185,6 +200,7 @@ final class CodexDesktopSessionWatcher {
     var onMessage: ((BridgeMessage) -> Void)?
 
     private static let turnContextMarker = Data(#""turn_context""#.utf8)
+    private static let recentCatalogRefreshInterval: TimeInterval = 10
 
     private struct SessionState {
         var id: String?
@@ -204,6 +220,7 @@ final class CodexDesktopSessionWatcher {
     private let automaticallyMonitorsChanges: Bool
     private let reconciliationSchedule: CodexReconciliationSchedule?
     private let titleResolver: any CodexSessionTitleResolving
+    private let startupBoundaryHook: (() -> Void)?
     private let queue = DispatchQueue(label: "dev.aegis.app.codex-desktop", qos: .utility)
     private var monitor: FileEventMonitor?
     private var reconciliationTimer: DispatchSourceTimer?
@@ -211,28 +228,37 @@ final class CodexDesktopSessionWatcher {
     private var offsets: [String: UInt64] = [:]
     private var buffers: [String: Data] = [:]
     private var states: [String: SessionState] = [:]
+    private var recentTranscriptPaths = Set<String>()
+    private var nextRecentCatalogRefresh: TimeInterval = 0
 
     init(
         root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions"),
         automaticallyMonitorsChanges: Bool = true,
         reconciliationSchedule: CodexReconciliationSchedule? = .standard,
-        titleResolver: any CodexSessionTitleResolving = SQLiteCodexSessionTitleResolver()
+        titleResolver: any CodexSessionTitleResolving = SQLiteCodexSessionTitleResolver(),
+        startupBoundaryHook: (() -> Void)? = nil
     ) {
         self.root = root.resolvingSymlinksInPath().standardizedFileURL
         self.automaticallyMonitorsChanges = automaticallyMonitorsChanges
         self.reconciliationSchedule = reconciliationSchedule
         self.titleResolver = titleResolver
+        self.startupBoundaryHook = startupBoundaryHook
     }
 
     func start(completion: (() -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self else { return }
-            self.seedExistingFiles()
+            let startupSnapshot = self.snapshotExistingFiles()
+            self.offsets.merge(startupSnapshot) { _, latest in latest }
+            self.refreshRecentTranscriptPaths()
+            self.startupBoundaryHook?()
             if let reconciliationSchedule = self.reconciliationSchedule {
+                let now = ProcessInfo.processInfo.systemUptime
                 self.reconciliationPolicy = CodexReconciliationPolicy(
                     schedule: reconciliationSchedule,
-                    startTime: ProcessInfo.processInfo.systemUptime
+                    startTime: now
                 )
+                self.nextRecentCatalogRefresh = now + Self.recentCatalogRefreshInterval
             }
             if self.automaticallyMonitorsChanges {
                 let monitor = FileEventMonitor(
@@ -246,6 +272,7 @@ final class CodexDesktopSessionWatcher {
                 self.monitor = monitor
                 monitor.start()
             }
+            self.catchUpStartupChanges(from: startupSnapshot)
             self.scheduleNextReconciliation()
             Log.info("Codex Desktop watcher started at \(self.root.path)")
             completion?()
@@ -276,21 +303,50 @@ final class CodexDesktopSessionWatcher {
             if scope == .fullAudit {
                 self.reconciliationPolicy?.recordFullAudit(at: now)
             }
-            self.reconcileTranscripts(scopes: [scope])
+            self.reconcileTranscripts(scopes: [scope], refreshRecentCatalog: scope == .recentDiscovery)
             self.scheduleNextReconciliation()
         }
     }
 
-    private func seedExistingFiles() {
+    private func snapshotExistingFiles() -> [String: UInt64] {
         guard let enumerator = FileManager.default.enumerator(
             at: root,
             includingPropertiesForKeys: [.fileSizeKey],
             options: [.skipsHiddenFiles]
-        ) else { return }
+        ) else { return [:] }
 
+        var snapshot: [String: UInt64] = [:]
         for case let url as URL in enumerator where url.pathExtension == "jsonl" {
             let path = canonicalPath(url)
-            offsets[path] = fileSize(url)
+            snapshot[path] = fileSize(url)
+        }
+        return snapshot
+    }
+
+    private func catchUpStartupChanges(from baseline: [String: UInt64]) {
+        let current = snapshotExistingFiles()
+
+        for path in baseline.keys where current[path] == nil {
+            offsets[path] = nil
+            buffers[path] = nil
+            states[path] = nil
+        }
+
+        for (path, currentSize) in current {
+            guard let baselineSize = baseline[path] else {
+                offsets[path] = nil
+                readAppendedLines(at: URL(fileURLWithPath: path))
+                continue
+            }
+            guard currentSize != baselineSize else { continue }
+            if currentSize < baselineSize {
+                offsets[path] = 0
+                buffers[path] = nil
+                states[path] = nil
+            } else {
+                offsets[path] = baselineSize
+            }
+            readAppendedLines(at: URL(fileURLWithPath: path))
         }
     }
 
@@ -304,7 +360,8 @@ final class CodexDesktopSessionWatcher {
                 discoverJSONLFiles(at: url, into: &files)
             }
         }
-        for path in files { readAppendedLines(at: URL(fileURLWithPath: path)) }
+        recentTranscriptPaths.formUnion(files)
+        for path in files { readAppendedLines(canonicalPath: path) }
         scheduleNextReconciliation()
     }
 
@@ -333,7 +390,11 @@ final class CodexDesktopSessionWatcher {
         let now = ProcessInfo.processInfo.systemUptime
         let scopes = policy.dueScopes(at: now, hasActiveTranscripts: hasActiveTranscripts)
         reconciliationPolicy = policy
-        reconcileTranscripts(scopes: scopes)
+        let refreshRecentCatalog = scopes.contains(.recentDiscovery) && now >= nextRecentCatalogRefresh
+        if refreshRecentCatalog {
+            nextRecentCatalogRefresh = now + Self.recentCatalogRefreshInterval
+        }
+        reconcileTranscripts(scopes: scopes, refreshRecentCatalog: refreshRecentCatalog)
         scheduleNextReconciliation()
     }
 
@@ -341,7 +402,10 @@ final class CodexDesktopSessionWatcher {
         states.values.contains { $0.active || !$0.tools.isEmpty }
     }
 
-    private func reconcileTranscripts(scopes: Set<CodexReconciliationScope>) {
+    private func reconcileTranscripts(
+        scopes: Set<CodexReconciliationScope>,
+        refreshRecentCatalog: Bool = false
+    ) {
         var paths = Set<String>()
 
         if scopes.contains(.fullAudit) {
@@ -349,9 +413,8 @@ final class CodexDesktopSessionWatcher {
             discoverJSONLFiles(at: root, into: &paths)
         } else {
             if scopes.contains(.recentDiscovery) {
-                for directory in CodexRecentDirectoryDiscovery.dateLeafDirectories(under: root, limit: 2) {
-                    discoverJSONLFiles(at: directory, into: &paths)
-                }
+                if refreshRecentCatalog { refreshRecentTranscriptPaths() }
+                paths.formUnion(recentTranscriptPaths)
             }
             if scopes.contains(.active) {
                 paths.formUnion(states.compactMap { path, state in
@@ -361,8 +424,16 @@ final class CodexDesktopSessionWatcher {
         }
 
         for path in paths {
-            readAppendedLines(at: URL(fileURLWithPath: path))
+            readAppendedLines(canonicalPath: path)
         }
+    }
+
+    private func refreshRecentTranscriptPaths() {
+        var paths = Set<String>()
+        for directory in CodexRecentDirectoryDiscovery.dateLeafDirectories(under: root, limit: 2) {
+            discoverJSONLFiles(at: directory, into: &paths)
+        }
+        recentTranscriptPaths = paths
     }
 
     private func discoverJSONLFiles(at url: URL, into files: inout Set<String>) {
@@ -377,7 +448,10 @@ final class CodexDesktopSessionWatcher {
     }
 
     private func readAppendedLines(at url: URL) {
-        let path = canonicalPath(url)
+        readAppendedLines(canonicalPath: canonicalPath(url))
+    }
+
+    private func readAppendedLines(canonicalPath path: String) {
         let url = URL(fileURLWithPath: path)
         guard FileManager.default.fileExists(atPath: path) else {
             offsets[path] = nil
@@ -393,10 +467,11 @@ final class CodexDesktopSessionWatcher {
             buffers[path] = nil
             states[path] = SessionState()
         }
+        guard size > offset else { return }
         if states[path] == nil {
             states[path] = readMetadata(url)
         }
-        guard size > offset, let handle = try? FileHandle(forReadingFrom: url) else { return }
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return }
         defer { try? handle.close() }
         do {
             try handle.seek(toOffset: offset)
@@ -511,8 +586,11 @@ final class CodexDesktopSessionWatcher {
     }
 
     private func fileSize(_ url: URL) -> UInt64 {
-        let values = try? url.resourceValues(forKeys: [.fileSizeKey])
-        return UInt64(values?.fileSize ?? 0)
+        var metadata = stat()
+        let result = url.path.withCString { path in
+            Darwin.lstat(path, &metadata)
+        }
+        return result == 0 ? UInt64(metadata.st_size) : 0
     }
 
     private func canonicalPath(_ url: URL) -> String {

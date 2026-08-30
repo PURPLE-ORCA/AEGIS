@@ -2,6 +2,22 @@ import AppKit
 import SwiftUI
 import Combine
 
+enum CompanionWindowLifecycleAction: Equatable {
+    case create
+    case destroy
+    case none
+}
+
+enum CompanionWindowLifecyclePolicy {
+    static func action(isEnabled: Bool, hasController: Bool) -> CompanionWindowLifecycleAction {
+        switch (isEnabled, hasController) {
+        case (true, false): return .create
+        case (false, true): return .destroy
+        default: return .none
+        }
+    }
+}
+
 final class CompanionPanel: NSPanel {
     init(contentRect: NSRect) {
         super.init(

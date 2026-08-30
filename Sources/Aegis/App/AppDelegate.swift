@@ -89,10 +89,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rateLimitStore: rateLimitStore
         )
         notchWindowController?.showWindow(nil)
-        companionWindowController = CompanionWindowController(
-            sessionStore: sessionStore,
-            settingsStore: settingsStore
-        )
+        settingsStore.$companionEnabled
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                self?.reconcileCompanionWindow(isEnabled: enabled)
+            }
+            .store(in: &cancellables)
         let screen = ScreenDetector.notchScreen
         Log.info("Notch window shown, frame: \(notchWindowController?.window?.frame ?? .zero)")
         Log.info("Screen frame: \(screen.frame)")
@@ -150,6 +152,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         settingsStore.lastWhatsNewVersion = currentVersion
 
+    }
+
+    private func reconcileCompanionWindow(isEnabled: Bool) {
+        switch CompanionWindowLifecyclePolicy.action(
+            isEnabled: isEnabled,
+            hasController: companionWindowController != nil
+        ) {
+        case .create:
+            companionWindowController = CompanionWindowController(
+                sessionStore: sessionStore,
+                settingsStore: settingsStore
+            )
+        case .destroy:
+            companionWindowController?.close()
+            companionWindowController = nil
+        case .none:
+            break
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
