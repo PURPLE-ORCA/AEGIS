@@ -199,6 +199,7 @@ final class CodexDesktopSessionWatcher {
     var onMessage: ((BridgeMessage) -> Void)?
 
     private static let turnContextMarker = Data(#""turn_context""#.utf8)
+    private static let recentCatalogRefreshInterval: TimeInterval = 10
 
     private struct SessionState {
         var id: String?
@@ -226,6 +227,8 @@ final class CodexDesktopSessionWatcher {
     private var offsets: [String: UInt64] = [:]
     private var buffers: [String: Data] = [:]
     private var states: [String: SessionState] = [:]
+    private var recentTranscriptPaths = Set<String>()
+    private var nextRecentCatalogRefresh: TimeInterval = 0
 
     init(
         root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions"),
@@ -246,12 +249,15 @@ final class CodexDesktopSessionWatcher {
             guard let self else { return }
             let startupSnapshot = self.snapshotExistingFiles()
             self.offsets.merge(startupSnapshot) { _, latest in latest }
+            self.refreshRecentTranscriptPaths()
             self.startupBoundaryHook?()
             if let reconciliationSchedule = self.reconciliationSchedule {
+                let now = ProcessInfo.processInfo.systemUptime
                 self.reconciliationPolicy = CodexReconciliationPolicy(
                     schedule: reconciliationSchedule,
-                    startTime: ProcessInfo.processInfo.systemUptime
+                    startTime: now
                 )
+                self.nextRecentCatalogRefresh = now + Self.recentCatalogRefreshInterval
             }
             if self.automaticallyMonitorsChanges {
                 let monitor = FileEventMonitor(
@@ -296,7 +302,7 @@ final class CodexDesktopSessionWatcher {
             if scope == .fullAudit {
                 self.reconciliationPolicy?.recordFullAudit(at: now)
             }
-            self.reconcileTranscripts(scopes: [scope])
+            self.reconcileTranscripts(scopes: [scope], refreshRecentCatalog: scope == .recentDiscovery)
             self.scheduleNextReconciliation()
         }
     }
@@ -353,7 +359,8 @@ final class CodexDesktopSessionWatcher {
                 discoverJSONLFiles(at: url, into: &files)
             }
         }
-        for path in files { readAppendedLines(at: URL(fileURLWithPath: path)) }
+        recentTranscriptPaths.formUnion(files)
+        for path in files { readAppendedLines(canonicalPath: path) }
         scheduleNextReconciliation()
     }
 
@@ -382,7 +389,11 @@ final class CodexDesktopSessionWatcher {
         let now = ProcessInfo.processInfo.systemUptime
         let scopes = policy.dueScopes(at: now, hasActiveTranscripts: hasActiveTranscripts)
         reconciliationPolicy = policy
-        reconcileTranscripts(scopes: scopes)
+        let refreshRecentCatalog = scopes.contains(.recentDiscovery) && now >= nextRecentCatalogRefresh
+        if refreshRecentCatalog {
+            nextRecentCatalogRefresh = now + Self.recentCatalogRefreshInterval
+        }
+        reconcileTranscripts(scopes: scopes, refreshRecentCatalog: refreshRecentCatalog)
         scheduleNextReconciliation()
     }
 
@@ -390,7 +401,10 @@ final class CodexDesktopSessionWatcher {
         states.values.contains { $0.active || !$0.tools.isEmpty }
     }
 
-    private func reconcileTranscripts(scopes: Set<CodexReconciliationScope>) {
+    private func reconcileTranscripts(
+        scopes: Set<CodexReconciliationScope>,
+        refreshRecentCatalog: Bool = false
+    ) {
         var paths = Set<String>()
 
         if scopes.contains(.fullAudit) {
@@ -398,9 +412,8 @@ final class CodexDesktopSessionWatcher {
             discoverJSONLFiles(at: root, into: &paths)
         } else {
             if scopes.contains(.recentDiscovery) {
-                for directory in CodexRecentDirectoryDiscovery.dateLeafDirectories(under: root, limit: 2) {
-                    discoverJSONLFiles(at: directory, into: &paths)
-                }
+                if refreshRecentCatalog { refreshRecentTranscriptPaths() }
+                paths.formUnion(recentTranscriptPaths)
             }
             if scopes.contains(.active) {
                 paths.formUnion(states.compactMap { path, state in
@@ -410,8 +423,16 @@ final class CodexDesktopSessionWatcher {
         }
 
         for path in paths {
-            readAppendedLines(at: URL(fileURLWithPath: path))
+            readAppendedLines(canonicalPath: path)
         }
+    }
+
+    private func refreshRecentTranscriptPaths() {
+        var paths = Set<String>()
+        for directory in CodexRecentDirectoryDiscovery.dateLeafDirectories(under: root, limit: 2) {
+            discoverJSONLFiles(at: directory, into: &paths)
+        }
+        recentTranscriptPaths = paths
     }
 
     private func discoverJSONLFiles(at url: URL, into files: inout Set<String>) {
@@ -426,7 +447,10 @@ final class CodexDesktopSessionWatcher {
     }
 
     private func readAppendedLines(at url: URL) {
-        let path = canonicalPath(url)
+        readAppendedLines(canonicalPath: canonicalPath(url))
+    }
+
+    private func readAppendedLines(canonicalPath path: String) {
         let url = URL(fileURLWithPath: path)
         guard FileManager.default.fileExists(atPath: path) else {
             offsets[path] = nil
