@@ -39,6 +39,45 @@ struct HermesReconciliationPolicy {
     }
 }
 
+struct HermesRefreshDebouncePolicy {
+    private(set) var isPending = false
+
+    mutating func requestSchedule() -> Bool {
+        guard !isPending else { return false }
+        isPending = true
+        return true
+    }
+
+    mutating func didRun() {
+        isPending = false
+    }
+}
+
+enum HermesCatalogChangePlan: Equatable {
+    case reconcileCatalog
+    case reconcileStores(Set<String>)
+}
+
+struct HermesCatalogChangePlanner {
+    static func plan(paths: [String], knownStoreKeys: Set<String>) -> HermesCatalogChangePlan {
+        var stores = Set<String>()
+        for path in paths {
+            guard let store = storeKey(for: path), knownStoreKeys.contains(store) else {
+                return .reconcileCatalog
+            }
+            stores.insert(store)
+        }
+        return stores.isEmpty ? .reconcileCatalog : .reconcileStores(stores)
+    }
+
+    private static func storeKey(for path: String) -> String? {
+        if path.hasSuffix("/state.db") { return path }
+        if path.hasSuffix("/state.db-wal") { return String(path.dropLast(4)) }
+        if path.hasSuffix("/state.db-shm") { return String(path.dropLast(4)) }
+        return nil
+    }
+}
+
 final class HermesDesktopSessionWatcher {
     var onMessage: ((BridgeMessage) -> Void)?
 
@@ -54,6 +93,7 @@ final class HermesDesktopSessionWatcher {
     private var monitor: FileEventMonitor?
     private var reconciliationTimer: DispatchSourceTimer?
     private var refreshWorkItem: DispatchWorkItem?
+    private var refreshDebouncePolicy = HermesRefreshDebouncePolicy()
     private var isRunning = false
 
     init(
@@ -96,6 +136,7 @@ final class HermesDesktopSessionWatcher {
             isRunning = false
             refreshWorkItem?.cancel()
             refreshWorkItem = nil
+            refreshDebouncePolicy = HermesRefreshDebouncePolicy()
             reconciliationTimer?.cancel()
             reconciliationTimer = nil
             monitor?.stop()
@@ -133,19 +174,33 @@ final class HermesDesktopSessionWatcher {
             includeFile: { url in
                 ["state.db", "state.db-wal", "state.db-shm"].contains(url.lastPathComponent)
             }
-        ) { [weak self] _ in
-            self?.scheduleRefresh()
+        ) { [weak self] paths in
+            self?.scheduleRefresh(paths: paths)
         }
         self.monitor = monitor
         monitor.start()
     }
 
-    private func scheduleRefresh() {
+    private func scheduleRefresh(paths: [String]) {
         queue.async { [weak self] in
             guard let self, self.isRunning else { return }
-            self.refreshWorkItem?.cancel()
-            self.scheduleSafetyCheck(after: .newRows)
-            let work = DispatchWorkItem { [weak self] in self?.reconcileStores() }
+            switch HermesCatalogChangePlanner.plan(
+                paths: paths,
+                knownStoreKeys: Set(self.workers.keys)
+            ) {
+            case .reconcileStores(let stores):
+                for store in stores { self.workers[store]?.reconcileNow() }
+                return
+            case .reconcileCatalog:
+                break
+            }
+            guard self.refreshDebouncePolicy.requestSchedule() else { return }
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.refreshWorkItem = nil
+                self.refreshDebouncePolicy.didRun()
+                self.reconcileStores()
+            }
             self.refreshWorkItem = work
             self.queue.asyncAfter(deadline: .now() + 0.06, execute: work)
         }
@@ -342,6 +397,7 @@ private final class HermesDesktopDatabaseWatcher {
     private var database: OpaquePointer?
     private var lastMessageId: Int64 = 0
     private var refreshWorkItem: DispatchWorkItem?
+    private var refreshDebouncePolicy = HermesRefreshDebouncePolicy()
     private var presentedActiveSessionIds = Set<String>()
 
     init(
@@ -390,6 +446,7 @@ private final class HermesDesktopDatabaseWatcher {
         queue.sync {
             refreshWorkItem?.cancel()
             refreshWorkItem = nil
+            refreshDebouncePolicy = HermesRefreshDebouncePolicy()
             reconciliationTimer?.cancel()
             reconciliationTimer = nil
             monitor?.stop()
@@ -416,9 +473,13 @@ private final class HermesDesktopDatabaseWatcher {
     private func scheduleRefresh() {
         queue.async { [weak self] in
             guard let self else { return }
-            self.refreshWorkItem?.cancel()
-            self.scheduleSafetyCheck(after: .newRows)
-            let work = DispatchWorkItem { [weak self] in self?.readAndScheduleNextSafetyCheck() }
+            guard self.refreshDebouncePolicy.requestSchedule() else { return }
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.refreshWorkItem = nil
+                self.refreshDebouncePolicy.didRun()
+                self.readAndScheduleNextSafetyCheck()
+            }
             self.refreshWorkItem = work
             self.queue.asyncAfter(deadline: .now() + 0.06, execute: work)
         }

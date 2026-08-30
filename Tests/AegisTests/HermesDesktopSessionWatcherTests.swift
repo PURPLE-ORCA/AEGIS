@@ -4,6 +4,36 @@ import XCTest
 @testable import Aegis
 
 final class HermesDesktopSessionWatcherTests: XCTestCase {
+    func testRefreshDebounceCannotBePostponedByLaterEvents() {
+        var policy = HermesRefreshDebouncePolicy()
+
+        XCTAssertTrue(policy.requestSchedule())
+        XCTAssertFalse(policy.requestSchedule())
+        XCTAssertFalse(policy.requestSchedule())
+
+        policy.didRun()
+        XCTAssertTrue(policy.requestSchedule())
+    }
+
+    func testCatalogChangePlannerTargetsKnownDatabaseWithoutCatalogScan() {
+        let store = "/tmp/.hermes/profiles/default/state.db"
+
+        XCTAssertEqual(
+            HermesCatalogChangePlanner.plan(
+                paths: [store + "-wal", store + "-shm"],
+                knownStoreKeys: [store]
+            ),
+            .reconcileStores([store])
+        )
+        XCTAssertEqual(
+            HermesCatalogChangePlanner.plan(
+                paths: ["/tmp/.hermes/profiles/new-profile"],
+                knownStoreKeys: [store]
+            ),
+            .reconcileCatalog
+        )
+    }
+
     func testRestoresUnfinishedTurnFromNamedProfileAtStartup() throws {
         let root = try makeDatabaseRoot()
         defer { try? FileManager.default.removeItem(at: root) }
