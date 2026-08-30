@@ -335,6 +335,19 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(policy.nextFullAudit, 600)
     }
 
+    func testStandardPolicyRecoversMissedStartEventWithinOneSecond() {
+        var policy = CodexReconciliationPolicy(
+            schedule: .standard,
+            startTime: 0
+        )
+
+        XCTAssertEqual(policy.nextDelay(at: 0, hasActiveTranscripts: false), 1)
+        XCTAssertEqual(
+            policy.dueScopes(at: 1, hasActiveTranscripts: false),
+            [.recentDiscovery]
+        )
+    }
+
     func testRecentDiscoveryReturnsOnlyNewestTwoDateLeaves() throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

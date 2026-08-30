@@ -106,7 +106,10 @@ struct CodexReconciliationSchedule: Equatable {
 
     static let standard = CodexReconciliationSchedule(
         activeInterval: 1,
-        recentDiscoveryInterval: 10,
+        // FSEvents can coalesce or drop a transcript append. Keep a bounded
+        // one-second size reconciliation over only the two newest date leaves
+        // so a new turn never inherits the old ten-second detection delay.
+        recentDiscoveryInterval: 1,
         fullAuditInterval: 300
     )
 }
@@ -439,10 +442,11 @@ final class CodexDesktopSessionWatcher {
             buffers[path] = nil
             states[path] = SessionState()
         }
+        guard size > offset else { return }
         if states[path] == nil {
             states[path] = readMetadata(url)
         }
-        guard size > offset, let handle = try? FileHandle(forReadingFrom: url) else { return }
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return }
         defer { try? handle.close() }
         do {
             try handle.seek(toOffset: offset)
