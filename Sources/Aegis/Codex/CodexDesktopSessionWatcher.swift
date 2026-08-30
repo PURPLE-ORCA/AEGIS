@@ -1,5 +1,6 @@
 import Foundation
 import AegisBridgeSupport
+import Darwin
 import SQLite3
 
 protocol CodexSessionTitleResolving {
@@ -585,8 +586,11 @@ final class CodexDesktopSessionWatcher {
     }
 
     private func fileSize(_ url: URL) -> UInt64 {
-        let values = try? url.resourceValues(forKeys: [.fileSizeKey])
-        return UInt64(values?.fileSize ?? 0)
+        var metadata = stat()
+        let result = url.path.withCString { path in
+            Darwin.lstat(path, &metadata)
+        }
+        return result == 0 ? UInt64(metadata.st_size) : 0
     }
 
     private func canonicalPath(_ url: URL) -> String {
