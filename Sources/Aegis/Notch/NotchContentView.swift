@@ -133,6 +133,10 @@ struct NotchContentView: View {
                 ?? viewModel.finishedSessionSnapshot {
                 FinishedView(
                     session: session,
+                    onOpenSession: {
+                        TerminalJumper.jump(to: session)
+                        viewModel.collapse()
+                    },
                     rateLimitStore: rateLimitStore,
                     settingsStore: settingsStore,
                     onOpenSettings: onOpenSettings,

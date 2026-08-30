@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FinishedView: View {
     let session: Session
+    let onOpenSession: () -> Void
     @ObservedObject var rateLimitStore: RateLimitStore
     @ObservedObject var settingsStore: SettingsStore
     let onOpenSettings: () -> Void
@@ -41,7 +42,7 @@ struct FinishedView: View {
             Spacer(minLength: NotchViewModel.notchOverlap + 8)
 
             HStack(spacing: 0) {
-                Button(action: { TerminalJumper.jump(to: session) }) {
+                Button(action: onOpenSession) {
                     HStack(alignment: .center, spacing: 12) {
                         SessionMascot(
                             status: .idle,
@@ -126,7 +127,7 @@ struct FinishedView: View {
             .padding(.top, 10)
             .padding(.bottom, 6)
 
-            Button(action: openSession) {
+            Button(action: onOpenSession) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 8) {
                         SessionMascot(status: .idle, size: 18, provider: session.provider)
@@ -237,10 +238,6 @@ struct FinishedView: View {
             isExpanded = expanded
         }
         onToggleExpand(expanded)
-    }
-
-    private func openSession() {
-        TerminalJumper.jump(to: session)
     }
 
 }
