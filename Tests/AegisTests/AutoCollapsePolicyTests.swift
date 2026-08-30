@@ -3,8 +3,9 @@ import XCTest
 
 @MainActor
 final class AutoCollapsePolicyTests: XCTestCase {
-    func testPanelSnapsCollapseAndKeepsSmoothExpansion() {
+    func testPanelSnapsCollapseAndUsesFastFinishedOpening() {
         XCTAssertEqual(NotchMotion.panelResizeDuration, 0.20)
+        XCTAssertEqual(NotchMotion.finishedCardOpenDuration, 0.12)
         XCTAssertEqual(
             NotchPanelTransitionPolicy.duration(for: .collapsed),
             0
@@ -15,7 +16,7 @@ final class AutoCollapsePolicyTests: XCTestCase {
         )
         XCTAssertEqual(
             NotchPanelTransitionPolicy.duration(for: .finished(sessionId: "session")),
-            NotchMotion.panelResizeDuration
+            NotchMotion.finishedCardOpenDuration
         )
         XCTAssertEqual(NotchMotion.panelResizeProgress(0), 0)
         XCTAssertEqual(NotchMotion.panelResizeProgress(0.5), 0.5)
@@ -23,7 +24,7 @@ final class AutoCollapsePolicyTests: XCTestCase {
     }
 
     func testInteractionTimingsMatchFinishedAndMouseExitPolicy() {
-        XCTAssertEqual(NotchViewModel.finishedCardVisibilityDuration, 10)
+        XCTAssertEqual(NotchViewModel.finishedCardVisibilityDuration, 5)
         XCTAssertEqual(NotchViewModel.finishedHoverCeiling, 30)
         XCTAssertEqual(
             NotchViewModel.autoCollapseDelayAfterMouseExit(for: .expanded),

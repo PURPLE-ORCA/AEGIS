@@ -5,6 +5,7 @@ import Combine
 enum NotchPanelTransitionPolicy {
     static func duration(for state: NotchState) -> TimeInterval {
         if case .collapsed = state { return 0 }
+        if case .finished = state { return NotchMotion.finishedCardOpenDuration }
         return NotchMotion.panelResizeDuration
     }
 }

@@ -18,7 +18,7 @@ final class NotchViewModel: ObservableObject {
     }
 
     static let expandedMouseExitDelay: TimeInterval = 0
-    static let finishedCardVisibilityDuration: TimeInterval = 10
+    static let finishedCardVisibilityDuration: TimeInterval = 5
     static let finishedHoverCeiling: TimeInterval = 30
     static let autoCollapseRearmInterval: TimeInterval = 0.6
 
