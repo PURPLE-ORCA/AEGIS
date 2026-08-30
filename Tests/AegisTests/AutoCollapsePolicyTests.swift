@@ -3,12 +3,11 @@ import XCTest
 
 @MainActor
 final class AutoCollapsePolicyTests: XCTestCase {
-    func testPanelUsesBriefCollapseAndKeepsSmoothExpansion() {
-        XCTAssertEqual(NotchMotion.panelCollapseDuration, 0.12)
+    func testPanelSnapsCollapseAndKeepsSmoothExpansion() {
         XCTAssertEqual(NotchMotion.panelResizeDuration, 0.20)
         XCTAssertEqual(
             NotchPanelTransitionPolicy.duration(for: .collapsed),
-            NotchMotion.panelCollapseDuration
+            0
         )
         XCTAssertEqual(
             NotchPanelTransitionPolicy.duration(for: .expanded),
