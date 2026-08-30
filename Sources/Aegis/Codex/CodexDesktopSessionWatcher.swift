@@ -6,13 +6,14 @@ protocol CodexSessionTitleResolving {
     func title(for sessionId: String) -> String?
 }
 
-struct SQLiteCodexSessionTitleResolver: CodexSessionTitleResolving {
+final class SQLiteCodexSessionTitleResolver: CodexSessionTitleResolving {
     private enum QueryResult {
         case prepared(String?)
         case unavailable
     }
 
     let databaseURL: URL
+    private var database: OpaquePointer?
 
     init(
         databaseURL: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -21,16 +22,12 @@ struct SQLiteCodexSessionTitleResolver: CodexSessionTitleResolving {
         self.databaseURL = databaseURL
     }
 
+    deinit {
+        if let database { sqlite3_close(database) }
+    }
+
     func title(for sessionId: String) -> String? {
-        var database: OpaquePointer?
-        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
-        guard sqlite3_open_v2(databaseURL.path, &database, flags, nil) == SQLITE_OK,
-              let database else {
-            if let database { sqlite3_close(database) }
-            return nil
-        }
-        defer { sqlite3_close(database) }
-        sqlite3_busy_timeout(database, 100)
+        guard let database = openDatabase() else { return nil }
 
         switch query(
             database,
@@ -55,6 +52,20 @@ struct SQLiteCodexSessionTitleResolver: CodexSessionTitleResolving {
         case .prepared(let title): return title
         case .unavailable: return nil
         }
+    }
+
+    private func openDatabase() -> OpaquePointer? {
+        if let database { return database }
+        var connection: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
+        guard sqlite3_open_v2(databaseURL.path, &connection, flags, nil) == SQLITE_OK,
+              let connection else {
+            if let connection { sqlite3_close(connection) }
+            return nil
+        }
+        sqlite3_busy_timeout(connection, 100)
+        database = connection
+        return connection
     }
 
     private func query(
@@ -204,6 +215,7 @@ final class CodexDesktopSessionWatcher {
     private let automaticallyMonitorsChanges: Bool
     private let reconciliationSchedule: CodexReconciliationSchedule?
     private let titleResolver: any CodexSessionTitleResolving
+    private let startupBoundaryHook: (() -> Void)?
     private let queue = DispatchQueue(label: "dev.aegis.app.codex-desktop", qos: .utility)
     private var monitor: FileEventMonitor?
     private var reconciliationTimer: DispatchSourceTimer?
@@ -216,18 +228,22 @@ final class CodexDesktopSessionWatcher {
         root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions"),
         automaticallyMonitorsChanges: Bool = true,
         reconciliationSchedule: CodexReconciliationSchedule? = .standard,
-        titleResolver: any CodexSessionTitleResolving = SQLiteCodexSessionTitleResolver()
+        titleResolver: any CodexSessionTitleResolving = SQLiteCodexSessionTitleResolver(),
+        startupBoundaryHook: (() -> Void)? = nil
     ) {
         self.root = root.resolvingSymlinksInPath().standardizedFileURL
         self.automaticallyMonitorsChanges = automaticallyMonitorsChanges
         self.reconciliationSchedule = reconciliationSchedule
         self.titleResolver = titleResolver
+        self.startupBoundaryHook = startupBoundaryHook
     }
 
     func start(completion: (() -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self else { return }
-            self.seedExistingFiles()
+            let startupSnapshot = self.snapshotExistingFiles()
+            self.offsets.merge(startupSnapshot) { _, latest in latest }
+            self.startupBoundaryHook?()
             if let reconciliationSchedule = self.reconciliationSchedule {
                 self.reconciliationPolicy = CodexReconciliationPolicy(
                     schedule: reconciliationSchedule,
@@ -246,6 +262,7 @@ final class CodexDesktopSessionWatcher {
                 self.monitor = monitor
                 monitor.start()
             }
+            self.catchUpStartupChanges(from: startupSnapshot)
             self.scheduleNextReconciliation()
             Log.info("Codex Desktop watcher started at \(self.root.path)")
             completion?()
@@ -281,16 +298,45 @@ final class CodexDesktopSessionWatcher {
         }
     }
 
-    private func seedExistingFiles() {
+    private func snapshotExistingFiles() -> [String: UInt64] {
         guard let enumerator = FileManager.default.enumerator(
             at: root,
             includingPropertiesForKeys: [.fileSizeKey],
             options: [.skipsHiddenFiles]
-        ) else { return }
+        ) else { return [:] }
 
+        var snapshot: [String: UInt64] = [:]
         for case let url as URL in enumerator where url.pathExtension == "jsonl" {
             let path = canonicalPath(url)
-            offsets[path] = fileSize(url)
+            snapshot[path] = fileSize(url)
+        }
+        return snapshot
+    }
+
+    private func catchUpStartupChanges(from baseline: [String: UInt64]) {
+        let current = snapshotExistingFiles()
+
+        for path in baseline.keys where current[path] == nil {
+            offsets[path] = nil
+            buffers[path] = nil
+            states[path] = nil
+        }
+
+        for (path, currentSize) in current {
+            guard let baselineSize = baseline[path] else {
+                offsets[path] = nil
+                readAppendedLines(at: URL(fileURLWithPath: path))
+                continue
+            }
+            guard currentSize != baselineSize else { continue }
+            if currentSize < baselineSize {
+                offsets[path] = 0
+                buffers[path] = nil
+                states[path] = nil
+            } else {
+                offsets[path] = baselineSize
+            }
+            readAppendedLines(at: URL(fileURLWithPath: path))
         }
     }
 

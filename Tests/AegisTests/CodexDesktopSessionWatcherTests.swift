@@ -75,6 +75,41 @@ final class CodexDesktopSessionWatcherTests: XCTestCase {
         XCTAssertEqual(messages.first?.model, "gpt-5.6-sol")
     }
 
+    func testStartupBoundaryAppendIsDeliveredWithoutWaitingForFallbackDiscovery() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transcript = root.appendingPathComponent("rollout-startup-boundary.jsonl")
+        try writeLines([
+            #"{"type":"session_meta","payload":{"id":"startup-boundary","cwd":"/tmp/project"}}"#,
+        ], to: transcript)
+
+        let received = expectation(description: "startup-boundary event")
+        let watcher = CodexDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: CodexReconciliationSchedule(
+                activeInterval: 60,
+                recentDiscoveryInterval: 60,
+                fullAuditInterval: 60
+            ),
+            startupBoundaryHook: {
+                try? self.appendLine(
+                    #"{"type":"event_msg","payload":{"type":"task_started"}}"#,
+                    to: transcript
+                )
+            }
+        )
+        watcher.onMessage = { message in
+            if message.sessionId == "startup-boundary", message.hookEvent == "UserPromptSubmit" {
+                received.fulfill()
+            }
+        }
+        watcher.start()
+        defer { watcher.stop() }
+
+        wait(for: [received], timeout: 1)
+    }
+
     func testNewTranscriptIsDiscoveredWithoutHistoryReplay() throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
