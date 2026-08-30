@@ -41,6 +41,8 @@ The aggregate target after all six plans is at least 30% lower average CPU under
 | 4 | [004 — Move log formatting off the main thread](004-off-main-log-formatting.md) | IMPLEMENTED | `a701379` |
 | 5 | [005 — Bound Codex reconciliation](005-bound-codex-reconciliation.md) | IMPLEMENTED | `9615721` |
 | 6 | [006 — Batch session-store publications](006-batch-session-publications.md) | IMPLEMENTED | `8b6eaa8` |
+| 7 | [007 — Polish island interaction and toolbar](007-polish-island-interaction-and-toolbar.md) | IMPLEMENTED | `1b9ad65`, `4a5267b` on `codex/island-interaction-polish` |
+| 8 | [008 — Auto-expand the Markdown finish card for ten seconds](008-auto-expanded-markdown-finish-card.md) | IMPLEMENTED | `85828d4`; visibility later reduced to five seconds in `27c3077` |
 
 Plans 1–5 are independent. Plan 6 changes the downstream cost of all watcher events, so run it last if per-plan before/after attribution matters. If only the final aggregate result matters, plan 6 may land before plans 2 and 5.
 
