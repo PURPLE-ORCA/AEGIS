@@ -24,17 +24,16 @@ final class AutoCollapsePolicyTests: XCTestCase {
     }
 
     func testInteractionTimingsMatchFinishedAndMouseExitPolicy() {
-        XCTAssertEqual(NotchViewModel.finishedCardVisibilityDuration, 6)
+        XCTAssertEqual(NotchViewModel.finishedCardVisibilityDuration, 10)
         XCTAssertEqual(NotchViewModel.finishedHoverCeiling, 30)
         XCTAssertEqual(
             NotchViewModel.autoCollapseDelayAfterMouseExit(for: .expanded),
             0
         )
-        XCTAssertEqual(
+        XCTAssertNil(
             NotchViewModel.autoCollapseDelayAfterMouseExit(
                 for: .finished(sessionId: "session")
-            ),
-            0
+            )
         )
         XCTAssertNil(
             NotchViewModel.autoCollapseDelayAfterMouseExit(
@@ -103,6 +102,20 @@ final class AutoCollapsePolicyTests: XCTestCase {
                 state: .finished(sessionId: "session"),
                 isHovered: true,
                 finishedDeadline: now,
+                now: now
+            ),
+            .collapse
+        )
+    }
+
+    func testUnhoveredFinishedCardCollapsesWhenVisibilityLeaseEnds() {
+        let now = Date()
+
+        XCTAssertEqual(
+            NotchViewModel.autoCollapseDecision(
+                state: .finished(sessionId: "session"),
+                isHovered: false,
+                finishedDeadline: now.addingTimeInterval(20),
                 now: now
             ),
             .collapse

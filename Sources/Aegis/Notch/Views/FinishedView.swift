@@ -10,7 +10,7 @@ struct FinishedView: View {
     let onContentHeightChange: (CGFloat) -> Void
 
     @Environment(\.notchTheme) private var theme
-    @State private var isExpanded = false
+    @State private var isExpanded = true
     @State private var measuredReplyHeight = FinishedReplyWindowLayout.initialReplyHeight
 
     var body: some View {
@@ -35,8 +35,8 @@ struct FinishedView: View {
         }
     }
 
-    /// The completion popup starts as one glanceable object: agent + reply.
-    /// Everything else is deliberately deferred until the user asks for it.
+    /// The user can collapse the automatic full-reply presentation into this
+    /// glanceable card without losing the session jump action.
     private var compactMessage: some View {
         VStack(spacing: 0) {
             Spacer(minLength: NotchViewModel.notchOverlap + 8)
@@ -127,27 +127,37 @@ struct FinishedView: View {
             .padding(.top, 10)
             .padding(.bottom, 6)
 
-            HStack(spacing: 8) {
-                SessionMascot(status: .idle, size: 18, provider: session.provider)
-                Text(session.displayName)
-                    .font(theme.font(size: 13, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .bold))
-                    Text("Finished in \(session.durationText)")
-                        .font(theme.font(size: 9, weight: .semibold))
+            Button(action: openSession) {
+                HStack(spacing: 8) {
+                    SessionMascot(status: .idle, size: 18, provider: session.provider)
+                    Text(session.displayName)
+                        .font(theme.font(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("Finished in \(session.durationText)")
+                            .font(theme.font(size: 9, weight: .semibold))
+                    }
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .notchPill(theme, fill: .green.opacity(0.18))
+                    Spacer()
+                    if let effort = session.effortLevel {
+                        EffortBadge(level: effort)
+                    }
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.45))
                 }
-                .foregroundColor(.green)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .notchPill(theme, fill: .green.opacity(0.18))
-                Spacer()
-                if let effort = session.effortLevel {
-                    EffortBadge(level: effort)
-                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open \(session.provider.displayName) session \(session.displayName)")
+            .accessibilityValue(FinishedMessagePresentation.preview(for: session))
+            .accessibilityHint("Opens this session in its app or terminal")
             .padding(.horizontal, 14)
             .padding(.top, 12)
             .padding(.bottom, 10)
@@ -267,6 +277,10 @@ struct FinishedView: View {
             isExpanded = expanded
         }
         onToggleExpand(expanded)
+    }
+
+    private func openSession() {
+        TerminalJumper.jump(to: session)
     }
 
     private func replyMetric(_ reply: String) -> String {

@@ -138,9 +138,7 @@ struct NotchContentView: View {
                     settingsStore: settingsStore,
                     onOpenSettings: onOpenSettings,
                     onToggleExpand: { expanded in
-                        if expanded {
-                            viewModel.cancelAutoCollapse()
-                        } else {
+                        if !expanded {
                             viewModel.dynamicFinishedHeight = NotchViewModel.finishedSize.height
                             viewModel.resumeFinishedAutoCollapse()
                         }
@@ -149,6 +147,7 @@ struct NotchContentView: View {
                         viewModel.updateFinishedContentHeight(height)
                     }
                 )
+                .id(session.id)
             } else {
                 Color.clear
                     .onAppear { viewModel.collapse() }
