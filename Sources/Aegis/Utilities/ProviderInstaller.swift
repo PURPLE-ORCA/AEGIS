@@ -462,11 +462,14 @@ export default {
     const heyApi = client?._client;
 
     const sessionCwd = new Map();
+    const sessionParent = new Map();
     const msgRoles = new Map();
     const lastAssistant = new Map();
 
     function base(sid, extra) {
-      return { session_id: `opencode-${sid}`, _source: "opencode", ...extra };
+      const parentID = sessionParent.get(sid);
+      return { session_id: `opencode-${sid}`, _source: "opencode",
+        ...(parentID ? { parent_session_id: `opencode-${parentID}` } : {}), ...extra };
     }
 
     async function replyPermission(sessionId, permissionId, response) {
@@ -522,17 +525,27 @@ export default {
 
         if (t === "session.created" && p.info) {
           sessionCwd.set(p.info.id, p.info.directory || "");
+          if (p.info.parentID) sessionParent.set(p.info.id, p.info.parentID);
           send("SessionStart", base(p.info.id, { hook_event_name: "SessionStart", cwd: p.info.directory || "" }));
           return;
         }
         if (t === "session.deleted" && p.info) {
-          sessionCwd.delete(p.info.id); lastAssistant.delete(p.info.id);
           send("SessionEnd", base(p.info.id, { hook_event_name: "SessionEnd" }));
+          sessionCwd.delete(p.info.id); sessionParent.delete(p.info.id); lastAssistant.delete(p.info.id);
           return;
         }
         if (t === "session.updated" && p.info?.time?.archived) {
-          sessionCwd.delete(p.info.id); lastAssistant.delete(p.info.id);
           send("SessionEnd", base(p.info.id, { hook_event_name: "SessionEnd" }));
+          sessionCwd.delete(p.info.id); sessionParent.delete(p.info.id); lastAssistant.delete(p.info.id);
+          return;
+        }
+        if (t === "session.updated" && p.info?.parentID) {
+          const learnedParent = !sessionParent.has(p.info.id);
+          sessionParent.set(p.info.id, p.info.parentID);
+          if (learnedParent) {
+            send("SessionStart", base(p.info.id, { hook_event_name: "SessionStart",
+              cwd: p.info.directory || sessionCwd.get(p.info.id) || "" }));
+          }
           return;
         }
 

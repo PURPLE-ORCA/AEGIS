@@ -5,6 +5,54 @@ import AegisBridgeSupport
 import SQLite3
 
 final class CodexDesktopSessionWatcherTests: XCTestCase {
+    @MainActor
+    func testSubagentTranscriptHonorsVisibilitySetting() throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transcript = root.appendingPathComponent("rollout-subagent.jsonl")
+        try writeLines([
+            #"{"type":"session_meta","payload":{"id":"child","cwd":"/tmp/project","thread_source":"subagent","parent_thread_id":"parent"}}"#,
+        ], to: transcript)
+        let watcher = CodexDesktopSessionWatcher(
+            root: root,
+            automaticallyMonitorsChanges: false,
+            reconciliationSchedule: nil
+        )
+        let started = expectation(description: "watcher started")
+        let hiddenEvent = expectation(description: "hidden subagent event")
+        let visibleEvent = expectation(description: "visible subagent event")
+        let store = SessionStore()
+        watcher.onMessage = { message in
+            store.handleMessage(message, respond: nil)
+            if message.userMessage == nil {
+                hiddenEvent.fulfill()
+            } else {
+                visibleEvent.fulfill()
+            }
+        }
+        watcher.start { started.fulfill() }
+        wait(for: [started], timeout: 3)
+        defer { watcher.stop() }
+
+        try appendLine(
+            #"{"type":"event_msg","payload":{"type":"task_started"}}"#,
+            to: transcript
+        )
+        watcher.reconcileNow()
+        wait(for: [hiddenEvent], timeout: 3)
+        XCTAssertNil(store.sessions["child"])
+
+        store.setShowsSubagents(true)
+        try appendLine(
+            #"{"type":"event_msg","payload":{"type":"user_message","message":"Keep going"}}"#,
+            to: transcript
+        )
+        watcher.reconcileNow()
+
+        wait(for: [visibleEvent], timeout: 3)
+        XCTAssertEqual(store.sessions["child"]?.parentSessionId, "parent")
+    }
+
     func testPropagatesLatestResolvedTitleOnEachEmittedEvent() throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

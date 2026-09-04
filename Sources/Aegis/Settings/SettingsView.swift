@@ -292,6 +292,14 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
             }
+            Toggle(isOn: $settingsStore.showSubagents) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show subagents")
+                    Text("Display child agent sessions as separate cards. Hidden subagents still appear when they need your input.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
         }
 
         Section {

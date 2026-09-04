@@ -44,6 +44,9 @@ final class SettingsStore: ObservableObject {
     @Published var expandOnHover: Bool {
         didSet { UserDefaults.standard.set(expandOnHover, forKey: "expandOnHover") }
     }
+    @Published var showSubagents: Bool {
+        didSet { UserDefaults.standard.set(showSubagents, forKey: "showSubagents") }
+    }
     @Published var keepAwakeMode: AgentKeepAwakeMode {
         didSet { UserDefaults.standard.set(keepAwakeMode.rawValue, forKey: "keepAwakeMode") }
     }
@@ -175,6 +178,7 @@ final class SettingsStore: ObservableObject {
             "soundProfile": SoundProfile.quietGlass.rawValue,
             "autoExpandOnPermission": true,
             "expandOnHover": true,
+            "showSubagents": false,
             "keepAwakeMode": AgentKeepAwakeMode.off.rawValue,
             "launchAtLogin": false,
             "hasCompletedOnboarding": false,
@@ -205,6 +209,7 @@ final class SettingsStore: ObservableObject {
         }
         self.autoExpandOnPermission = defaults.bool(forKey: "autoExpandOnPermission")
         self.expandOnHover = defaults.bool(forKey: "expandOnHover")
+        self.showSubagents = defaults.bool(forKey: "showSubagents")
         self.keepAwakeMode = AgentKeepAwakeMode(
             rawValue: defaults.string(forKey: "keepAwakeMode") ?? ""
         ) ?? .off

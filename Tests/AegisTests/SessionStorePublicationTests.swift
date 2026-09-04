@@ -5,6 +5,22 @@ import AegisBridgeSupport
 
 final class SessionStorePublicationTests: XCTestCase {
     @MainActor
+    func testHiddenSubagentPermissionRemainsActionableThenDisappears() {
+        let store = SessionStore()
+        var response: BridgeResponse?
+
+        store.handleMessage(
+            message(event: "PermissionRequest", toolName: "Bash", parentSessionId: "parent"),
+            respond: { response = $0 }
+        )
+
+        XCTAssertEqual(store.sessions[Self.sessionId]?.status, .waitingPermission)
+        store.respondToPermission(sessionId: Self.sessionId, action: .allowOnce)
+        XCTAssertNotNil(response)
+        XCTAssertNil(store.sessions[Self.sessionId])
+    }
+
+    @MainActor
     func testCanonicalMessagesPublishOnceAndEventsObserveCommittedState() {
         let store = SessionStore()
         var publications = 0
@@ -203,7 +219,8 @@ final class SessionStorePublicationTests: XCTestCase {
         toolName: String? = nil,
         toolInput: String? = nil,
         activitySummary: String? = nil,
-        toolOutcome: ToolOutcome? = nil
+        toolOutcome: ToolOutcome? = nil,
+        parentSessionId: String? = nil
     ) -> BridgeMessage {
         BridgeMessage(
             sessionId: Self.sessionId,
@@ -215,7 +232,8 @@ final class SessionStorePublicationTests: XCTestCase {
             assistantMessage: assistantMessage,
             activitySummary: activitySummary,
             toolOutcome: toolOutcome,
-            source: "codex"
+            source: "codex",
+            parentSessionId: parentSessionId
         )
     }
 }

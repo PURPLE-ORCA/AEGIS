@@ -57,6 +57,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        settingsStore.$showSubagents
+            .removeDuplicates()
+            .sink { [weak self] showsSubagents in
+                self?.sessionStore.setShowsSubagents(showsSubagents)
+            }
+            .store(in: &cancellables)
+
         systemPowerConditionMonitor.onChange = { [weak self] conditions in
             self?.executionPowerController.update(conditions: conditions)
         }

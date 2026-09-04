@@ -143,6 +143,10 @@ let sessionId = (payload["session_id"] as? String)
     ?? (payload["sessionId"] as? String)
     ?? (payload["conversationId"] as? String)        // AntiGravity
     ?? "\(providerSource)-\(getppid())"
+let parentSessionId = (payload["parent_session_id"] as? String)
+    ?? (payload["parentSessionId"] as? String)
+    ?? (payload["parent_thread_id"] as? String)
+    ?? (payload["parentID"] as? String)
 // AntiGravity's tool payload: { toolCall: { name, args: { CommandLine, Cwd } },
 // workspacePaths: [...] } — no top-level cwd/tool_name/tool_input.
 let agToolCall = payload["toolCall"] as? [String: Any]
@@ -335,6 +339,7 @@ var message: [String: Any] = [
     "source": providerSource,
 ]
 if let cwd { message["cwd"] = cwd }
+if let parentSessionId { message["parent_session_id"] = parentSessionId }
 if let toolName { message["tool_name"] = toolName }
 if let toolInputStr { message["tool_input"] = toolInputStr }
 if let toolFilePath { message["tool_file_path"] = toolFilePath }
