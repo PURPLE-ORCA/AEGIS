@@ -31,7 +31,8 @@ final class HermesAudioRecorder {
                 throw HermesHandoffError.microphoneUnavailable
             }
         }
-        let format = input.outputFormat(forBus: 0)
+        // Device selection updates the hardware format before the engine's cached output format.
+        let format = input.inputFormat(forBus: 0)
         guard format.channelCount > 0, format.sampleRate > 0 else {
             throw HermesHandoffError.microphoneUnavailable
         }
@@ -66,7 +67,7 @@ final class HermesAudioRecorder {
                 forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
             ) { [weak engine = engine] _ in
                 guard let engine else { return }
-                let currentFormat = engine.inputNode.outputFormat(forBus: 0)
+                let currentFormat = engine.inputNode.inputFormat(forBus: 0)
                 guard Self.configurationRequiresStop(isRunning: engine.isRunning,
                     originalFormat: format, currentFormat: currentFormat) else { return }
                 Log.error("Voice recording interrupted: running=\(engine.isRunning) input=\(currentFormat)")
@@ -89,6 +90,9 @@ final class HermesAudioRecorder {
         configurationObserver = nil
         if tapInstalled { engine.inputNode.removeTap(onBus: 0); tapInstalled = false }
         engine.stop()
+        if let audioFile {
+            Log.info("Voice recording captured frames=\(audioFile.length) sampleRate=\(audioFile.processingFormat.sampleRate)")
+        }
         audioFile = nil
         return outputURL
     }

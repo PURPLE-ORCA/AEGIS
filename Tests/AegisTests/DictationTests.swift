@@ -151,6 +151,12 @@ final class DictationTests: XCTestCase {
         try "".write(to: tools.appendingPathComponent("__init__.py"), atomically: true, encoding: .utf8)
         try "def transcribe_recording(path):\n    \(body)\n".write(
             to: tools.appendingPathComponent("voice_mode.py"), atomically: true, encoding: .utf8)
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)!
+        let file = try AVAudioFile(forWriting: directory.appendingPathComponent("test.wav"), settings: format.settings)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480)!
+        buffer.frameLength = 480
+        for index in 0..<480 { buffer.floatChannelData![0][index] = 0.1 }
+        try file.write(from: buffer)
         return directory
     }
 
@@ -218,6 +224,21 @@ final class DictationTests: XCTestCase {
         transcripts.append("First transcript", reason: "Original field closed")
         transcripts.append("Second transcript", reason: "No original field")
         XCTAssertEqual(transcripts.text, "First transcript\n\nSecond transcript")
+    }
+
+    func testEmptyRecordingFailsBeforeTranscription() async throws {
+        let directory = try makeTranscriber("raise RuntimeError('Empty audio must not reach transcription')")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let audio = directory.appendingPathComponent("empty.wav")
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)!
+        do { _ = try AVAudioFile(forWriting: audio, settings: format.settings) }
+        do {
+            _ = try await HermesHandoffRunner().transcribe(audioFile: audio,
+                installation: HermesInstallation(rootDirectory: directory, pythonExecutable: URL(fileURLWithPath: "/usr/bin/python3")))
+            XCTFail("Empty audio was accepted")
+        } catch HermesHandoffError.recordingEmpty {
+            // The recorder failure is kept distinct from a valid recording containing no speech.
+        }
     }
 
 }

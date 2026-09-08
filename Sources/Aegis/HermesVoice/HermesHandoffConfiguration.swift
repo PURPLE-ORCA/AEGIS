@@ -81,6 +81,7 @@ enum HermesHandoffError: LocalizedError {
     case invalidWorkingDirectory
     case microphoneDenied
     case microphoneUnavailable
+    case recordingEmpty
     case recordingFailed
     case noSpeech
     case transcriptionFailed(String?)
@@ -96,6 +97,8 @@ enum HermesHandoffError: LocalizedError {
             return "Allow microphone access in System Settings."
         case .microphoneUnavailable:
             return "No microphone is available."
+        case .recordingEmpty:
+            return "No audio reached Aegis. Check the selected microphone and try again."
         case .recordingFailed:
             return "The recording could not be completed."
         case .noSpeech:

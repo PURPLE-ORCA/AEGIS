@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import Darwin
 
 private struct HermesTranscriptionPayload: Decodable {
@@ -12,6 +13,10 @@ actor HermesHandoffRunner {
     private var activeSubmissions: [UUID: Process] = [:]
 
     func transcribe(audioFile: URL, installation: HermesInstallation) async throws -> String {
+        let recording = try AVAudioFile(forReading: audioFile)
+        guard recording.length > 0 else {
+            throw HermesHandoffError.recordingEmpty
+        }
         let plan = HermesHandoffProcessPlanner.transcriptionPlan(
             installation: installation,
             audioFile: audioFile
