@@ -24,7 +24,7 @@ enum HermesVoiceHandoffPhase: Equatable {
         case .submitting:
             return "Sending to Hermes…"
         case .transcriptReady:
-            return "Ready to copy"
+            return "Copied to clipboard"
         case .sent:
             return "Sent to Hermes"
         case .failed:
@@ -61,7 +61,7 @@ enum HermesVoiceHandoffPhase: Equatable {
     }
 
     var detail: String? {
-        if case .transcriptReady = self { return "Your transcript is in the Copy window" }
+        if case .transcriptReady = self { return "Check the field before pasting" }
         if case .failed(let message) = self { return message }
         if case .requestingPermission = self { return "Allow microphone access if prompted" }
         return nil

@@ -194,10 +194,9 @@ final class DictationController {
                     dismiss(after: 1.2)
                 } catch {
                     guard token == generation, !Task.isCancelled else { throw CancellationError() }
-                    DictationTranscriptController.shared.append(transcript, reason: error.localizedDescription)
-                    DictationTranscriptController.shared.show()
+                    try DictationTranscriptController.shared.append(transcript)
                     model.phase = .transcriptReady
-                    settings.dictationStatus = "Transcript ready to copy"
+                    settings.dictationStatus = "Copied to clipboard. \(error.localizedDescription)"
                     dismiss(after: 2)
                 }
             } catch {

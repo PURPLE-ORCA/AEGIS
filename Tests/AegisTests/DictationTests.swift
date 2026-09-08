@@ -215,14 +215,18 @@ final class DictationTests: XCTestCase {
     }
 
     @MainActor
-    func testUnavailableDestinationPreservesTextInsteadOfOverwritingEdits() {
+    func testUnavailableDestinationPreservesTextInsteadOfOverwritingEdits() throws {
         let snapshot = DictationInsertionSnapshot(text: "Original", selection: NSRange(location: 8, length: 0))
         XCTAssertThrowsError(try snapshot.replacingSelection(with: " words", currentText: "Edited"))
         let invalid = DictationInsertionSnapshot(text: "Original", selection: NSRange(location: Int.max, length: 1))
         XCTAssertThrowsError(try invalid.replacingSelection(with: " words", currentText: "Original"))
         let transcripts = DictationTranscriptController()
-        transcripts.append("First transcript", reason: "Original field closed")
-        transcripts.append("Second transcript", reason: "No original field")
+        let clipboard = NSPasteboard.withUniqueName()
+        defer { clipboard.releaseGlobally() }
+        try transcripts.append("First transcript", clipboard: clipboard)
+        XCTAssertEqual(clipboard.string(forType: .string), "First transcript")
+        try transcripts.append("Second transcript", clipboard: clipboard)
+        XCTAssertEqual(clipboard.string(forType: .string), "Second transcript")
         XCTAssertEqual(transcripts.text, "First transcript\n\nSecond transcript")
     }
 

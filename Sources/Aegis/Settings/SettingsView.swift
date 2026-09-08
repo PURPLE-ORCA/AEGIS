@@ -309,11 +309,19 @@ struct SettingsView: View {
         }
         if !dictationTranscripts.text.isEmpty {
             Section("Uninserted transcript") {
+                Text(dictationTranscripts.text).textSelection(.enabled)
                 Text("Your uninserted text is kept here until you clear it or quit Aegis.")
                     .font(.callout).foregroundStyle(.secondary)
                 HStack {
-                    Button("Show transcript") { dictationTranscripts.show() }
-                    Button("Copy text") { dictationTranscripts.copy() }
+                    Button("Copy text") {
+                        do {
+                            try dictationTranscripts.copy()
+                            settingsStore.dictationStatus = "Copied to clipboard"
+                        } catch {
+                            settingsStore.dictationStatus = error.localizedDescription
+                        }
+                    }
+                    Button("Clear") { dictationTranscripts.clear() }
                 }
             }
         }
