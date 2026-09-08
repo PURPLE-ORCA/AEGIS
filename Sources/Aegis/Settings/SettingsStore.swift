@@ -15,11 +15,15 @@ final class SettingsStore: ObservableObject {
     @Published var dictationMicrophoneID: String {
         didSet { UserDefaults.standard.set(dictationMicrophoneID, forKey: "dictationMicrophoneID") }
     }
+    @Published var dictationMuteWhileRecording: Bool {
+        didSet { UserDefaults.standard.set(dictationMuteWhileRecording, forKey: "dictationMuteWhileRecording") }
+    }
+    @Published var dictationAudioStatus = ""
     @Published var dictationStatus = ""
 
     static func registerDictationDefaults(_ defaults: UserDefaults) {
         defaults.register(defaults: ["dictationEnabled": false, "dictationMode": "toggle",
-                                     "dictationShiftKey": "either", "dictationMicrophoneID": ""])
+                                     "dictationShiftKey": "either", "dictationMicrophoneID": "", "dictationMuteWhileRecording": false])
     }
 
     func resetDictationShortcut() { dictationShiftKey = .either }
@@ -185,6 +189,7 @@ final class SettingsStore: ObservableObject {
         dictationEnabled = defaults.bool(forKey: "dictationEnabled")
         dictationMode = DictationMode(rawValue: defaults.string(forKey: "dictationMode") ?? "") ?? .toggle
         dictationShiftKey = DictationShiftKey(rawValue: defaults.string(forKey: "dictationShiftKey") ?? "") ?? .either
+        dictationMuteWhileRecording = defaults.bool(forKey: "dictationMuteWhileRecording")
         dictationMicrophoneID = defaults.string(forKey: "dictationMicrophoneID") ?? ""
         let preferredHermesDirectory = HermesHandoffConfiguration.preferredWorkingDirectory(
             homeDirectory: FileManager.default.homeDirectoryForCurrentUser,

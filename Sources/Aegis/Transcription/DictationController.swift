@@ -7,6 +7,7 @@ final class DictationController {
     private let settings: SettingsStore
     private let shortcut = GlobalDictationShortcut()
     private let audio = DictationAudio()
+    private let outputMute = DictationOutputMute()
     private let runner = HermesHandoffRunner()
     private let model = HermesVoiceCapsuleModel()
     private lazy var capsule = HermesVoiceCapsuleWindowController(model: model)
@@ -58,6 +59,15 @@ final class DictationController {
             }.store(in: &subscriptions)
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.activeSpaceDidChangeNotification)
             .sink { [weak self] _ in self?.destinationNeedsSettling = true }.store(in: &subscriptions)
+        settings.$dictationMuteWhileRecording.dropFirst()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if !enabled { restoreOutputSound() }
+                else if startedAt != nil {
+                    do { try outputMute.mute() }
+                    catch { cancel(); fail(error) }
+                }
+            }.store(in: &subscriptions)
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)
             .sink { [weak self] _ in self?.cancel() }.store(in: &subscriptions)
     }
@@ -128,6 +138,7 @@ final class DictationController {
                 }
                 activeDevice = device.id
                 model.projectName = device.name
+                if settings.dictationMuteWhileRecording { try outputMute.mute() }
                 try await audio.start(device: device.deviceID, level: { [weak self] level in
                     Task { @MainActor in
                         guard let self, token == self.generation else { return }
@@ -179,7 +190,9 @@ final class DictationController {
         operation = Task { [weak self] in
             guard let self else { return }
             do {
-                guard let file = await audio.stop(), duration >= 0.25 else { throw HermesHandoffError.noSpeech }
+                let recordedFile = await audio.stop()
+                restoreOutputSound()
+                guard let file = recordedFile, duration >= 0.25 else { throw HermesHandoffError.noSpeech }
                 guard let installation = await Task.detached(operation: { HermesHandoffConfiguration.installation() }).value else {
                     throw HermesHandoffError.installationMissing
                 }
@@ -212,7 +225,12 @@ final class DictationController {
         }
     }
 
+    private func restoreOutputSound() {
+        settings.dictationAudioStatus = outputMute.restore() ? "" : "Could not restore sound. Unmute your output in macOS Sound settings."
+    }
+
     private func cancel() {
+        restoreOutputSound()
         generation = UUID()
         operation?.cancel()
         // Keep the operation occupied until cleanup completes, so old work cannot remove a new recording.
@@ -238,6 +256,7 @@ final class DictationController {
     }
 
     private func fail(_ error: Error) {
+        restoreOutputSound()
         shortcut.reset()
         activeDevice = nil
         model.level = 0

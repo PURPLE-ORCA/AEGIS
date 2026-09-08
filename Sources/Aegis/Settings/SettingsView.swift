@@ -296,6 +296,12 @@ struct SettingsView: View {
             }
         }
         Section("Microphone") {
+            Toggle("Mute while recording", isOn: $settingsStore.dictationMuteWhileRecording)
+            if !settingsStore.dictationAudioStatus.isEmpty {
+                Text(settingsStore.dictationAudioStatus).font(.callout).foregroundStyle(.red)
+            }
+            Text("Silence system audio during dictation and restore it when recording ends.")
+                .font(.callout).foregroundStyle(.secondary)
             Picker("Input device", selection: $settingsStore.dictationMicrophoneID) {
                 Text("Automatic, prefer built-in microphone").tag("")
                 ForEach(microphones.devices) { Text($0.name).tag($0.id) }

@@ -12,6 +12,7 @@ final class DictationTests: XCTestCase {
         defaults.set(true, forKey: "hermesVoiceHandoffEnabled")
         SettingsStore.registerDictationDefaults(defaults)
         XCTAssertFalse(defaults.bool(forKey: "dictationEnabled"))
+        XCTAssertFalse(defaults.bool(forKey: "dictationMuteWhileRecording"))
         XCTAssertEqual(defaults.string(forKey: "dictationMode"), "toggle")
         XCTAssertEqual(defaults.string(forKey: "dictationShiftKey"), "either")
         XCTAssertEqual(defaults.string(forKey: "dictationMicrophoneID"), "")
@@ -302,6 +303,44 @@ final class DictationTests: XCTestCase {
             XCTAssertEqual(reads, 1)
             XCTAssertTrue(error.localizedDescription.contains("changed unexpectedly"))
         }
+    }
+
+    @MainActor
+    func testRecordingMuteRestoresOnlyPreviouslyAudibleOutputs() throws {
+        var muted: [UInt32: Bool] = [1: false, 2: true]
+        let output = DictationOutputMute(devices: { [1, 2, 1] },
+            readMute: { muted[$0]! }, writeMute: { muted[$0] = $1 })
+        try output.mute()
+        XCTAssertEqual(muted, [1: true, 2: true])
+        try output.mute()
+        output.restore()
+        output.restore()
+        XCTAssertEqual(muted, [1: false, 2: true])
+    }
+
+    @MainActor
+    func testRecordingMuteRollsBackIfAnOutputCannotBeMuted() {
+        var muted: [UInt32: Bool] = [1: false, 2: false]
+        var writes = 0
+        let output = DictationOutputMute(devices: { [1, 2] }, readMute: { muted[$0]! }, writeMute: { device, value in
+            if value {
+                writes += 1
+                if writes == 2 { throw DictationFailure(message: "Output unavailable") }
+            }
+            muted[device] = value
+        })
+        XCTAssertThrowsError(try output.mute())
+        XCTAssertEqual(muted, [1: false, 2: false])
+        var failRestore = true
+        let unavailable = DictationOutputMute(devices: { [1] }, readMute: { muted[$0]! }, writeMute: { device, value in
+            if !value && failRestore { throw DictationFailure(message: "Output disconnected") }
+            muted[device] = value
+        })
+        try? unavailable.mute()
+        XCTAssertFalse(unavailable.restore())
+        failRestore = false
+        XCTAssertTrue(unavailable.restore())
+        XCTAssertEqual(muted[1], false)
     }
 
 }
