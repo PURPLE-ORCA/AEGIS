@@ -204,11 +204,12 @@ final class DictationController {
                         throw DictationFailure(message: targetFailure ?? "There was no text field selected when recording started.")
                     }
                     model.phase = .submitting
-                    try await target.insert(transcript, requiresSettling: destinationNeedsSettling)
+                    let verified = try await target.insert(transcript, requiresSettling: destinationNeedsSettling)
                     try Task.checkCancellation()
                     guard token == generation else { return }
-                    model.phase = .sent
-                    settings.dictationStatus = "Text inserted"
+                    if !verified { DictationTranscriptController.shared.retain(transcript) }
+                    model.phase = verified ? .sent : .pasteUnverified
+                    settings.dictationStatus = verified ? "Text inserted" : "Paste sent. Check the field; your transcript is saved in Transcription settings."
                     dismiss(after: 1.2)
                 } catch {
                     guard token == generation, !Task.isCancelled else { throw CancellationError() }

@@ -283,26 +283,34 @@ final class DictationTests: XCTestCase {
     @MainActor
     func testPasteVerificationWaitsForDelayedEditorUpdate() async throws {
         var reads = 0
-        try await DictationInsertion.verifyPaste(before: "Original", expected: "Original words") {
+        let verified = try await DictationInsertion.verifyPaste(before: "Original", expected: "Original words") {
             reads += 1
             return reads < 24 ? "Original" : "Original words"
         }
+        XCTAssertTrue(verified)
         XCTAssertEqual(reads, 24)
     }
 
     @MainActor
-    func testPasteVerificationRejectsUnexpectedEditsWithoutRetrying() async {
+    func testPasteVerificationRejectsUnexpectedEditsWithoutRetrying() async throws {
         var reads = 0
-        do {
-            try await DictationInsertion.verifyPaste(before: "Original", expected: "Original words") {
-                reads += 1
-                return "User edit"
-            }
-            XCTFail("Unexpected edits must not be reported as inserted")
-        } catch {
-            XCTAssertEqual(reads, 1)
-            XCTAssertTrue(error.localizedDescription.contains("changed unexpectedly"))
+        let verified = try await DictationInsertion.verifyPaste(before: "Original", expected: "Original words") {
+            reads += 1
+            return "User edit"
         }
+        XCTAssertFalse(verified)
+        XCTAssertEqual(reads, 1)
+    }
+
+    @MainActor
+    func testSnapshotAllowsMissingReadbackAndPreservesKnownTextGuard() async throws {
+        let verified = try await DictationInsertion.verifyPaste(before: nil, expected: nil) { nil }
+        XCTAssertFalse(verified)
+        let unreadable = DictationInsertionSnapshot(text: nil, selection: nil)
+        XCTAssertNil(try unreadable.replacingSelection(with: " words", currentText: nil))
+        let noCursor = DictationInsertionSnapshot(text: "Original", selection: nil)
+        XCTAssertNil(try noCursor.replacingSelection(with: " words", currentText: "Original"))
+        XCTAssertThrowsError(try noCursor.replacingSelection(with: " words", currentText: "Edited"))
     }
 
     @MainActor

@@ -18,10 +18,14 @@ enum DictationCaptureError: LocalizedError {
 }
 
 struct DictationInsertionSnapshot {
-    let text: String
-    let selection: NSRange
+    let text: String?
+    let selection: NSRange?
 
-    func replacingSelection(with transcript: String, currentText: String) throws -> String {
+    func replacingSelection(with transcript: String, currentText: String?) throws -> String? {
+        guard text == nil || currentText == text else {
+            throw DictationFailure(message: "The original text changed while you were dictating. Copy your transcript to keep those edits.")
+        }
+        guard let text, let selection else { return nil }
         let length = (text as NSString).length
         guard currentText == text, selection.location >= 0, selection.length >= 0,
               selection.location <= length, selection.length <= length - selection.location else {
@@ -47,6 +51,8 @@ struct DictationInsertion {
         }
         var value: CFTypeRef?
         let app = AXUIElementCreateApplication(application.processIdentifier)
+        // Chromium apps may expose their editor only after accessibility is requested.
+        _ = AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
         guard AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &value) == .success,
               let value, CFGetTypeID(value) == AXUIElementGetTypeID() else {
             throw DictationFailure(message: "This app does not expose a focused text field.")
@@ -57,8 +63,12 @@ struct DictationInsertion {
         guard role as? String != kAXSecureTextFieldSubrole else {
             throw DictationCaptureError.secureField
         }
-        guard let text = text(in: element), let selection = selectedRange(in: element) else {
-            throw DictationFailure(message: "The original field does not expose its text and cursor position.")
+        var elementRole: CFTypeRef?
+        _ = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &elementRole)
+        let text = text(in: element)
+        let selection = selectedRange(in: element)
+        guard [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole].contains(elementRole as? String ?? "") || selection != nil else {
+            throw DictationFailure(message: "Focus a text field before dictating.")
         }
         var windowValue: CFTypeRef?
         _ = AXUIElementCopyAttributeValue(element, kAXWindowAttribute as CFString, &windowValue)
@@ -144,29 +154,27 @@ struct DictationInsertion {
         throw DictationFailure(message: "Could not settle focus in the original field. Your transcript is on the clipboard.")
     }
 
-    func insert(_ transcript: String, requiresSettling: Bool = true) async throws {
+    func insert(_ transcript: String, requiresSettling: Bool = true) async throws -> Bool {
         var stage = "original-text"
         var inserted = false
         defer { Log.info("Dictation insertion pid=\(application.processIdentifier) stage=\(stage) inserted=\(inserted)") }
-        guard let before = Self.text(in: element) else {
-            throw DictationFailure(message: "The original field is no longer available. Your transcript is ready to copy.")
-        }
+        let before = Self.text(in: element)
         let expected = try snapshot.replacingSelection(with: transcript, currentText: before)
         stage = "restore-focus"
         try await restoreFocus(requiresSettling: requiresSettling)
         try Task.checkCancellation()
-        guard let currentText = Self.text(in: element) else {
-            throw DictationFailure(message: "The original field is no longer available. Your transcript is ready to copy.")
-        }
+        let currentText = Self.text(in: element)
         _ = try snapshot.replacingSelection(with: transcript, currentText: currentText)
         stage = "restore-selection"
-        var range = CFRange(location: snapshot.selection.location, length: snapshot.selection.length)
-        guard let value = AXValueCreate(.cfRange, &range) else {
-            throw DictationFailure(message: "Could not restore the original cursor position.")
-        }
-        _ = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, value)
-        guard Self.selectedRange(in: element) == snapshot.selection else {
-            throw DictationFailure(message: "Could not restore the original cursor position. Your transcript is ready to copy.")
+        if let selection = snapshot.selection {
+            var range = CFRange(location: selection.location, length: selection.length)
+            guard let value = AXValueCreate(.cfRange, &range) else {
+                throw DictationFailure(message: "Could not restore the original cursor position.")
+            }
+            _ = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, value)
+            guard Self.selectedRange(in: element) == snapshot.selection else {
+                throw DictationFailure(message: "Could not restore the original cursor position. Your transcript is ready to copy.")
+            }
         }
         guard Self.text(in: element) == before else {
             throw DictationFailure(message: "The field changed during insertion. Check the text before trying again.")
@@ -207,21 +215,19 @@ struct DictationInsertion {
         // Send through normal keyboard routing only after verifying the exact destination.
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
-        try await Self.verifyPaste(before: before, expected: expected) {
+        inserted = try await Self.verifyPaste(before: before, expected: expected) {
             Self.text(in: element)
         }
-        inserted = true
+        return inserted
     }
 
-    static func verifyPaste(before: String, expected: String, readText: () -> String?) async throws {
+    static func verifyPaste(before: String?, expected: String?, readText: () -> String?) async throws -> Bool {
         for _ in 0..<60 {
             try await Task.sleep(for: .milliseconds(50))
             let current = readText()
-            if current == expected { return }
-            guard current == before else {
-                throw DictationFailure(message: "The field changed unexpectedly after Paste. Check it before pasting your saved transcript.")
-            }
+            if let expected, current == expected { return true }
+            if current != before { return false }
         }
-        throw DictationFailure(message: "No inserted text was detected in the original field. Your transcript is saved on the clipboard.")
+        return false
     }
 }

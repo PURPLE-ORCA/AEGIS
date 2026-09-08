@@ -7,8 +7,12 @@ final class DictationTranscriptController: ObservableObject {
     @Published private(set) var text = ""
 
     func append(_ transcript: String, clipboard: NSPasteboard = .general) throws {
-        text += text.isEmpty ? transcript : "\n\n" + transcript
+        retain(transcript)
         try copy(transcript, to: clipboard)
+    }
+
+    func retain(_ transcript: String) {
+        text += text.isEmpty ? transcript : "\n\n" + transcript
     }
 
     func copy() throws {

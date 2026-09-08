@@ -8,6 +8,7 @@ enum HermesVoiceHandoffPhase: Equatable {
     case transcribing
     case submitting
     case sent
+    case pasteUnverified
     case transcriptReady
     case failed(String)
 
@@ -23,6 +24,8 @@ enum HermesVoiceHandoffPhase: Equatable {
             return "Transcribing…"
         case .submitting:
             return "Sending to Hermes…"
+        case .pasteUnverified:
+            return "Check pasted text"
         case .transcriptReady:
             return "Copied to clipboard"
         case .sent:
@@ -38,7 +41,7 @@ enum HermesVoiceHandoffPhase: Equatable {
             return "mic.fill"
         case .transcribing, .submitting:
             return "waveform"
-        case .transcriptReady:
+        case .pasteUnverified, .transcriptReady:
             return "doc.on.clipboard"
         case .sent:
             return "checkmark"
@@ -61,6 +64,7 @@ enum HermesVoiceHandoffPhase: Equatable {
     }
 
     var detail: String? {
+        if case .pasteUnverified = self { return "Transcript saved in Settings" }
         if case .transcriptReady = self { return "Check the field before pasting" }
         if case .failed(let message) = self { return message }
         if case .requestingPermission = self { return "Allow microphone access if prompted" }
