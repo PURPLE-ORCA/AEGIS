@@ -30,6 +30,8 @@ struct BridgeMessage: Codable {
     let source: String?
     /// Parent session for provider-created child agents. Nil for root sessions.
     let parentSessionId: String?
+    /// Provider explicitly reports that this session has no persistent transcript.
+    let isEphemeral: Bool?
     /// PID of the agent process that spawned the bridge (getppid in the bridge).
     /// Used to detect when an agent exits without firing SessionEnd.
     let agentPid: Int?
@@ -57,6 +59,7 @@ struct BridgeMessage: Codable {
         sessionTitle: String? = nil,
         source: String? = nil,
         parentSessionId: String? = nil,
+        isEphemeral: Bool? = nil,
         agentPid: Int? = nil,
         model: String? = nil
     ) {
@@ -80,6 +83,7 @@ struct BridgeMessage: Codable {
         self.sessionTitle = sessionTitle
         self.source = source
         self.parentSessionId = parentSessionId
+        self.isEphemeral = isEphemeral
         self.agentPid = agentPid
         self.model = model
     }
@@ -118,6 +122,7 @@ struct BridgeMessage: Codable {
         case sessionTitle = "session_title"
         case source
         case parentSessionId = "parent_session_id"
+        case isEphemeral = "is_ephemeral"
         case agentPid = "agent_pid"
         case model
     }

@@ -140,6 +140,27 @@ final class SessionPresenceTests: XCTestCase {
     }
 
     @MainActor
+    func testAbandonedToolUseSessionIsCompleted() {
+        let store = SessionStore()
+        let sessionID = "abandoned-tool"
+        let now = Date()
+        store.sessions[sessionID] = Session(
+            id: sessionID,
+            cwd: "/tmp/project",
+            startedAt: now.addingTimeInterval(-2 * 24 * 60 * 60),
+            status: .toolUse,
+            terminalInfo: nil,
+            source: "codex",
+            lastActivityAt: now.addingTimeInterval(-2 * 24 * 60 * 60)
+        )
+
+        store.sweepClosedAgents(at: now)
+
+        XCTAssertEqual(store.sessions[sessionID]?.status, .completed)
+        XCTAssertNil(store.activeSessions[sessionID])
+    }
+
+    @MainActor
     func testDurablyTrackedHermesThinkingSessionIsNotExpired() {
         let store = SessionStore()
         let sessionID = "durable-hermes"

@@ -339,6 +339,9 @@ var message: [String: Any] = [
     "source": providerSource,
 ]
 if let cwd { message["cwd"] = cwd }
+if providerSource == "codex", payload["transcript_path"] is NSNull {
+    message["is_ephemeral"] = true
+}
 if let parentSessionId { message["parent_session_id"] = parentSessionId }
 if let toolName { message["tool_name"] = toolName }
 if let toolInputStr { message["tool_input"] = toolInputStr }

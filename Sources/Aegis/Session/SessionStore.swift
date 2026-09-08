@@ -32,6 +32,7 @@ final class SessionStore: ObservableObject {
     private static let codexIdleThreshold: TimeInterval = 5 * 60
     private static let hookOnlyThinkingIdleThreshold: TimeInterval = 15 * 60
     private static let hookOnlyThinkingSources: Set<String> = ["hermes", "antigravity"]
+    private static let silentActiveSessionLifetime: TimeInterval = 24 * 60 * 60
 
     @Published var sessions: [String: Session] = [:]
 
@@ -85,6 +86,9 @@ final class SessionStore: ObservableObject {
     ///      sessions retain their provider watcher, while hook-only sessions are
     ///      retired after 15 minutes without progress. Tool and approval states
     ///      remain exempt so long-running commands and user decisions stay visible.
+    ///   4. Silent active-session lease — any provider can miss its closing event.
+    ///      Thinking/tool states with no event for 24 hours are abandoned, while
+    ///      approval states remain visible until the user resolves them.
     func sweepClosedAgents(at now: Date = Date()) {
 
         for (id, session) in sessions {
@@ -125,6 +129,14 @@ final class SessionStore: ObservableObject {
                session.status == .thinking,
                now.timeIntervalSince(session.lastActivityAt) > Self.hookOnlyThinkingIdleThreshold {
                 Log.info("Hook session expired after inactivity source=\(session.source) session=\(id.prefix(8))")
+                shouldClose = true
+            }
+
+            if !shouldClose,
+               session.status == .thinking || session.status == .toolUse,
+               now.timeIntervalSince(session.lastActivityAt) > Self.silentActiveSessionLifetime {
+                // ponytail: 24h is the safety lease until every provider exposes authoritative task liveness.
+                Log.info("Silent active session expired source=\(session.source) session=\(id.prefix(8))")
                 shouldClose = true
             }
 
@@ -187,9 +199,8 @@ final class SessionStore: ObservableObject {
     }
 
     private func removeHiddenSubagentIfSettled(sessionId: String) {
-        guard !showsSubagents,
-              let session = sessions[sessionId],
-              session.parentSessionId != nil,
+        guard let session = sessions[sessionId],
+              session.isEphemeral || (!showsSubagents && session.parentSessionId != nil),
               session.pendingPermission == nil,
               session.pendingQuestion == nil else { return }
         removeHiddenSubagent(sessionId: sessionId)
@@ -249,10 +260,11 @@ final class SessionStore: ObservableObject {
     ) {
         let sessionId = message.sessionId
         let parentSessionId = message.parentSessionId ?? sessions[sessionId]?.parentSessionId
+        let isEphemeral = message.isEphemeral ?? sessions[sessionId]?.isEphemeral ?? false
         let hasPendingAttention = sessions[sessionId].map {
             $0.pendingPermission != nil || $0.pendingQuestion != nil
         } ?? false
-        if !showsSubagents && parentSessionId != nil && !hasPendingAttention && !Self.isAttentionRequest(message) {
+        if (isEphemeral || (!showsSubagents && parentSessionId != nil)) && !hasPendingAttention && !Self.isAttentionRequest(message) {
             if sessions[sessionId] != nil {
                 removeHiddenSubagent(sessionId: sessionId)
             }
@@ -310,6 +322,7 @@ final class SessionStore: ObservableObject {
         if let parentSessionId = message.parentSessionId {
             session.parentSessionId = parentSessionId
         }
+        session.isEphemeral = isEphemeral
         if origin == .durableProviderState {
             session.isDurablyTracked = true
         }
