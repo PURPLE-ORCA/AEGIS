@@ -2,6 +2,7 @@
 set -euo pipefail
 
 VERSION="${1:-0.1.0}"
+SIGNING_IDENTITY="${AEGIS_SIGNING_IDENTITY:--}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -64,7 +65,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>NSAppleEventsUsageDescription</key>
     <string>Aegis uses System Events to focus the exact Hermes session you select.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Aegis records only while you hold the Push-to-Talk shortcut, then hands your request to Hermes.</string>
+    <string>Aegis uses your microphone when you start dictation or hold the voice handoff shortcut.</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>
@@ -74,6 +75,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 plutil -lint "$APP/Contents/Info.plist"
-codesign --force --deep --sign - "$APP"
+if [ "$SIGNING_IDENTITY" = "-" ]; then
+  echo "Warning: ad-hoc signing changes app identity on rebuild. Existing macOS permissions may need to be granted again."
+  echo "Set AEGIS_SIGNING_IDENTITY to a persistent code-signing identity to preserve permissions across updates."
+fi
+codesign --force --deep --sign "$SIGNING_IDENTITY" "$APP"
 codesign --verify --deep --strict "$APP"
 echo "==> Done: $APP"

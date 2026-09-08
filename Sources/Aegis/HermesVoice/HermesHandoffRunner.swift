@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 private struct HermesTranscriptionPayload: Decodable {
     let success: Bool
@@ -7,6 +8,7 @@ private struct HermesTranscriptionPayload: Decodable {
 }
 
 actor HermesHandoffRunner {
+    private var transcriptions: [UUID: Process] = [:]
     private var activeSubmissions: [UUID: Process] = [:]
 
     func transcribe(audioFile: URL, installation: HermesInstallation) async throws -> String {
@@ -75,6 +77,7 @@ actor HermesHandoffRunner {
     }
 
     func stop() {
+        for identifier in transcriptions.keys { cancelTranscription(identifier) }
         for process in activeSubmissions.values where process.isRunning {
             process.terminate()
         }
@@ -102,31 +105,58 @@ actor HermesHandoffRunner {
         return nil
     }
 
-    private func runToCompletion(_ plan: HermesHandoffProcessPlan) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            let process = Process()
-            let output = Pipe()
-            process.executableURL = plan.executable
-            process.arguments = plan.arguments
-            process.currentDirectoryURL = plan.currentDirectory
-            process.environment = Self.hermesEnvironment
-            process.standardOutput = output
-            process.standardError = output
-            process.terminationHandler = { process in
-                let data = output.fileHandleForReading.readDataToEndOfFile()
-                if process.terminationStatus == 0 {
-                    continuation.resume(returning: data)
-                } else {
-                    continuation.resume(throwing: HermesHandoffError.transcriptionFailed(nil))
-                }
-            }
-
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(throwing: HermesHandoffError.installationMissing)
-            }
+    private func cancelTranscription(_ identifier: UUID) {
+        guard let process = transcriptions[identifier], process.isRunning else { return }
+        process.terminate()
+        Task {
+            try? await Task.sleep(for: .seconds(1))
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
         }
+    }
+
+    private func runToCompletion(_ plan: HermesHandoffProcessPlan) async throws -> Data {
+        try Task.checkCancellation()
+        let identifier = UUID()
+        let process = Process()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("aegis-transcription-\(identifier).log")
+        FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600])
+        let output = try FileHandle(forWritingTo: url)
+        defer {
+            transcriptions[identifier] = nil
+            try? output.close()
+            try? FileManager.default.removeItem(at: url)
+        }
+        process.executableURL = plan.executable
+        process.arguments = plan.arguments
+        process.currentDirectoryURL = plan.currentDirectory
+        process.environment = Self.hermesEnvironment
+        process.standardOutput = output
+        process.standardError = output
+        transcriptions[identifier] = process
+        let deadline = Task {
+            try? await Task.sleep(for: .seconds(90))
+            guard !Task.isCancelled else { return }
+            cancelTranscription(identifier)
+        }
+        defer { deadline.cancel() }
+        // A file avoids blocking the child on a full stdout pipe before termination.
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                process.terminationHandler = { process in
+                    if process.terminationStatus == 0 {
+                        continuation.resume()
+                    } else {
+                        continuation.resume(throwing: HermesHandoffError.transcriptionFailed(nil))
+                    }
+                }
+                do { try process.run() }
+                catch { continuation.resume(throwing: HermesHandoffError.installationMissing) }
+            }
+        } onCancel: {
+            Task { await self.cancelTranscription(identifier) }
+        }
+        try Task.checkCancellation()
+        return try Data(contentsOf: url)
     }
 
     private static var hermesEnvironment: [String: String] {

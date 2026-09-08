@@ -8,6 +8,7 @@ enum HermesVoiceHandoffPhase: Equatable {
     case transcribing
     case submitting
     case sent
+    case transcriptReady
     case failed(String)
 
     var title: String {
@@ -22,6 +23,8 @@ enum HermesVoiceHandoffPhase: Equatable {
             return "Transcribing…"
         case .submitting:
             return "Sending to Hermes…"
+        case .transcriptReady:
+            return "Ready to copy"
         case .sent:
             return "Sent to Hermes"
         case .failed:
@@ -35,6 +38,8 @@ enum HermesVoiceHandoffPhase: Equatable {
             return "mic.fill"
         case .transcribing, .submitting:
             return "waveform"
+        case .transcriptReady:
+            return "doc.on.clipboard"
         case .sent:
             return "checkmark"
         case .failed:
@@ -56,14 +61,28 @@ enum HermesVoiceHandoffPhase: Equatable {
     }
 
     var detail: String? {
+        if case .transcriptReady = self { return "Your transcript is in the Copy window" }
         if case .failed(let message) = self { return message }
-        if case .requestingPermission = self { return "Confirm once, then keep holding" }
+        if case .requestingPermission = self { return "Allow microphone access if prompted" }
         return nil
     }
 }
 
 @MainActor
 final class HermesVoiceCapsuleModel: ObservableObject {
+    @Published var isDictation = false
+    @Published var stopHint = "Release"
+    var title: String {
+        guard isDictation else { return phase.title }
+        switch phase {
+        case .idle: return "Ready"
+        case .requestingPermission: return "Preparing microphone…"
+        case .submitting: return "Inserting text…"
+        case .sent: return "Text inserted"
+        case .failed: return "Dictation stopped"
+        default: return phase.title
+        }
+    }
     @Published var phase: HermesVoiceHandoffPhase = .idle
     @Published var level: Double = 0
     @Published var target: HermesHandoffTarget = .newSession
@@ -88,7 +107,7 @@ struct HermesVoiceCapsuleView: View {
             .frame(width: 38, height: 38)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(model.phase.title)
+                Text(model.title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -97,11 +116,11 @@ struct HermesVoiceCapsuleView: View {
                     Text(detail)
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
-                        .lineLimit(1)
+                        .lineLimit(2)
                 } else if model.phase == .recording {
                     levelMeter
                 } else {
-                    Text("\(model.target.capsuleLabel) · \(model.projectName)")
+                    Text(model.isDictation ? model.projectName : "\(model.target.capsuleLabel) · \(model.projectName)")
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(1)
@@ -111,9 +130,9 @@ struct HermesVoiceCapsuleView: View {
             Spacer(minLength: 4)
 
             if model.phase == .recording {
-                Text("RELEASE")
+                Text(model.stopHint)
                     .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .tracking(0.8)
+
                     .foregroundStyle(model.phase.accent)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
@@ -132,8 +151,9 @@ struct HermesVoiceCapsuleView: View {
         )
         .padding(20)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(model.phase.title)
-        .accessibilityValue(model.phase.detail ?? "\(model.target.displayName), \(model.projectName)")
+        .accessibilityLabel(model.title)
+        .accessibilityValue(model.phase.detail ?? model.projectName)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: model.phase)
     }
 
     private var isProcessing: Bool {
@@ -179,7 +199,14 @@ final class HermesVoiceCapsuleWindowController: NSWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.hidesOnDeactivate = false
         panel.isMovable = false
-        panel.contentView = NSHostingView(rootView: HermesVoiceCapsuleView(model: model))
+        panel.ignoresMouseEvents = true
+        let container = NSView(frame: frame)
+        let hosting = NSHostingView(rootView: HermesVoiceCapsuleView(model: model))
+        hosting.sizingOptions = []
+        hosting.frame = container.bounds
+        hosting.autoresizingMask = [.width, .height]
+        container.addSubview(hosting)
+        panel.contentView = container
         super.init(window: panel)
     }
 
@@ -191,7 +218,7 @@ final class HermesVoiceCapsuleWindowController: NSWindowController {
         guard let window else { return }
         let screen = ScreenDetector.notchScreen
         let x = screen.frame.midX - window.frame.width / 2
-        let y = screen.frame.maxY - ScreenDetector.notchHeight - window.frame.height - 14
+        let y = screen.frame.maxY - ScreenDetector.notchHeight - window.frame.height + 20
         window.setFrameOrigin(NSPoint(x: x, y: y))
         window.alphaValue = 0
         window.orderFrontRegardless()
@@ -203,11 +230,6 @@ final class HermesVoiceCapsuleWindowController: NSWindowController {
 
     func dismiss() {
         guard let window, window.isVisible else { return }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.12
-            window.animator().alphaValue = 0
-        } completionHandler: {
-            DispatchQueue.main.async { window.orderOut(nil) }
-        }
+        window.orderOut(nil)
     }
 }

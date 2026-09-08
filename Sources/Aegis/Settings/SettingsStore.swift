@@ -3,6 +3,27 @@ import Combine
 import ServiceManagement
 
 final class SettingsStore: ObservableObject {
+    @Published var dictationEnabled: Bool {
+        didSet { UserDefaults.standard.set(dictationEnabled, forKey: "dictationEnabled") }
+    }
+    @Published var dictationMode: DictationMode {
+        didSet { UserDefaults.standard.set(dictationMode.rawValue, forKey: "dictationMode") }
+    }
+    @Published var dictationShiftKey: DictationShiftKey {
+        didSet { UserDefaults.standard.set(dictationShiftKey.rawValue, forKey: "dictationShiftKey") }
+    }
+    @Published var dictationMicrophoneID: String {
+        didSet { UserDefaults.standard.set(dictationMicrophoneID, forKey: "dictationMicrophoneID") }
+    }
+    @Published var dictationStatus = ""
+
+    static func registerDictationDefaults(_ defaults: UserDefaults) {
+        defaults.register(defaults: ["dictationEnabled": false, "dictationMode": "toggle",
+                                     "dictationShiftKey": "either", "dictationMicrophoneID": ""])
+    }
+
+    func resetDictationShortcut() { dictationShiftKey = .either }
+
     @Published var companionEnabled: Bool {
         didSet { UserDefaults.standard.set(companionEnabled, forKey: "companionEnabled") }
     }
@@ -160,6 +181,11 @@ final class SettingsStore: ObservableObject {
     init() {
         Self.migrateLegacyInstallationIfNeeded()
         let defaults = UserDefaults.standard
+        Self.registerDictationDefaults(defaults)
+        dictationEnabled = defaults.bool(forKey: "dictationEnabled")
+        dictationMode = DictationMode(rawValue: defaults.string(forKey: "dictationMode") ?? "") ?? .toggle
+        dictationShiftKey = DictationShiftKey(rawValue: defaults.string(forKey: "dictationShiftKey") ?? "") ?? .either
+        dictationMicrophoneID = defaults.string(forKey: "dictationMicrophoneID") ?? ""
         let preferredHermesDirectory = HermesHandoffConfiguration.preferredWorkingDirectory(
             homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
             fileExists: { FileManager.default.fileExists(atPath: $0.path) }

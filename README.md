@@ -34,6 +34,14 @@ Build a runnable macOS app bundle:
 
 The app is written to `build/Aegis.app`.
 
+For updates that retain macOS permissions, use the same code-signing identity on every build:
+
+```bash
+AEGIS_SIGNING_IDENTITY="Your code-signing identity" ./scripts/build-app.sh 0.1.0
+```
+
+Without this variable, the build is ad-hoc signed. Its identity changes when the executable changes, so an enabled Accessibility or Input Monitoring entry can belong to an older build. Remove Aegis from the affected list in System Settings, add the installed app again, and enable it. Switching signing identities also requires granting access again.
+
 ## Run
 
 Run the SwiftPM debug executable:
