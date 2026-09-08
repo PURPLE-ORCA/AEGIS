@@ -229,8 +229,8 @@ struct DictationNotchView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.top, ScreenDetector.notchHeight + 15)
-        .frame(width: 420, height: ScreenDetector.notchHeight + 170)
+        .padding(.top, ScreenDetector.notchHeight / 0.7 + 15)
+        .frame(width: 420, height: ScreenDetector.notchHeight / 0.7 + 170)
         .background {
             ZStack {
                 Color.black
@@ -239,6 +239,8 @@ struct DictationNotchView: View {
             }
         }
         .clipShape(NotchShape(cornerRadius: 42))
+        .scaleEffect(0.7, anchor: .top)
+        .frame(width: 294, height: ScreenDetector.notchHeight + 119, alignment: .top)
         .accessibilityElement(children: .combine)
         .accessibilityHint(model.phase == .recording ? model.stopHint : "")
     }
@@ -268,8 +270,8 @@ final class HermesVoiceCapsuleWindowController: NSWindowController {
 
     init(model: HermesVoiceCapsuleModel) {
         isDictation = model.isDictation
-        let frame = NSRect(x: 0, y: 0, width: model.isDictation ? 420 : 370,
-            height: model.isDictation ? ScreenDetector.notchHeight + 170 : 108)
+        let frame = NSRect(x: 0, y: 0, width: model.isDictation ? 294 : 370,
+            height: model.isDictation ? ScreenDetector.notchHeight + 119 : 108)
         let panel = NSPanel(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel, .utilityWindow],
