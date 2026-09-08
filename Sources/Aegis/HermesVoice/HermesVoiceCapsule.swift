@@ -83,7 +83,10 @@ final class HermesVoiceCapsuleModel: ObservableObject {
         default: return phase.title
         }
     }
-    @Published var phase: HermesVoiceHandoffPhase = .idle
+    @Published var recordingStartedAt: Date?
+    @Published var phase: HermesVoiceHandoffPhase = .idle {
+        didSet { if phase == .recording, oldValue != .recording { recordingStartedAt = Date() } }
+    }
     @Published var level: Double = 0
     @Published var target: HermesHandoffTarget = .newSession
     @Published var projectName = "PURPLE-VAULT"
@@ -182,10 +185,91 @@ struct HermesVoiceCapsuleView: View {
     }
 }
 
+struct DictationNotchView: View {
+    @ObservedObject var model: HermesVoiceCapsuleModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 18) {
+                waveform(mirrored: false)
+                ZStack {
+                    Circle().fill(model.phase.accent.opacity(0.12))
+                    Circle().stroke(
+                        LinearGradient(colors: [Color(red: 0.85, green: 0.53, blue: 1), Color(red: 0.57, green: 0.17, blue: 1)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 3)
+                        .shadow(color: model.phase.accent.opacity(0.55), radius: 10)
+                    Image(systemName: model.phase.symbol)
+                        .font(.system(size: 29, weight: .medium))
+                        .foregroundStyle(.white)
+                        .symbolEffect(.pulse, options: .repeating,
+                            isActive: (model.phase == .transcribing || model.phase == .submitting) && !reduceMotion)
+                }
+                .frame(width: 68, height: 68)
+                waveform(mirrored: true)
+            }
+            Text(model.phase == .recording ? "Recording…" : model.title)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+            if model.phase == .recording, let start = model.recordingStartedAt {
+                TimelineView(.periodic(from: start, by: 1)) { context in
+                    let elapsed = max(0, Int(context.date.timeIntervalSince(start)))
+                    Text(String(format: "%02d:%02d", elapsed / 60, elapsed % 60))
+                        .monospacedDigit()
+                }
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(red: 0.67, green: 0.57, blue: 0.84))
+            } else {
+                Text(model.phase.detail ?? "")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.65))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .padding(.horizontal, 28)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, ScreenDetector.notchHeight + 15)
+        .frame(width: 420, height: ScreenDetector.notchHeight + 170)
+        .background {
+            ZStack {
+                Color.black
+                RadialGradient(colors: [model.phase.accent.opacity(0.18), .clear],
+                    center: .center, startRadius: 12, endRadius: 170)
+            }
+        }
+        .clipShape(NotchShape(cornerRadius: 42))
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(model.phase == .recording ? model.stopHint : "")
+    }
+
+    private func waveform(mirrored: Bool) -> some View {
+        HStack(spacing: 5) {
+            ForEach(0..<6) { index in
+                let position = mirrored ? 5 - index : index
+                let profile: [CGFloat] = [8, 12, 22, 38, 22, 16]
+                Capsule()
+                    .fill(LinearGradient(colors: [Color(red: 0.88, green: 0.57, blue: 1), model.phase.accent],
+                        startPoint: .top, endPoint: .bottom))
+                    .opacity(model.phase == .recording ? 0.45 + model.level * 0.55 : 0.25)
+                    .frame(width: 4, height: model.phase == .recording ? 5 + profile[position] * model.level : 5)
+            }
+        }
+        .frame(width: 49, height: 44)
+        .shadow(color: model.phase.accent.opacity(0.4), radius: 7)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.09), value: model.level)
+        .accessibilityHidden(true)
+    }
+}
+
 @MainActor
 final class HermesVoiceCapsuleWindowController: NSWindowController {
+    private let isDictation: Bool
+
     init(model: HermesVoiceCapsuleModel) {
-        let frame = NSRect(x: 0, y: 0, width: 370, height: 108)
+        isDictation = model.isDictation
+        let frame = NSRect(x: 0, y: 0, width: model.isDictation ? 420 : 370,
+            height: model.isDictation ? ScreenDetector.notchHeight + 170 : 108)
         let panel = NSPanel(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel, .utilityWindow],
@@ -201,7 +285,9 @@ final class HermesVoiceCapsuleWindowController: NSWindowController {
         panel.isMovable = false
         panel.ignoresMouseEvents = true
         let container = NSView(frame: frame)
-        let hosting = NSHostingView(rootView: HermesVoiceCapsuleView(model: model))
+        let hosting = NSHostingView(rootView: model.isDictation
+            ? AnyView(DictationNotchView(model: model))
+            : AnyView(HermesVoiceCapsuleView(model: model)))
         hosting.sizingOptions = []
         hosting.frame = container.bounds
         hosting.autoresizingMask = [.width, .height]
@@ -218,7 +304,8 @@ final class HermesVoiceCapsuleWindowController: NSWindowController {
         guard let window else { return }
         let screen = ScreenDetector.notchScreen
         let x = screen.frame.midX - window.frame.width / 2
-        let y = screen.frame.maxY - ScreenDetector.notchHeight - window.frame.height + 20
+        let y = isDictation ? screen.frame.maxY - window.frame.height
+            : screen.frame.maxY - ScreenDetector.notchHeight - window.frame.height + 20
         window.setFrameOrigin(NSPoint(x: x, y: y))
         window.alphaValue = 0
         window.orderFrontRegardless()
