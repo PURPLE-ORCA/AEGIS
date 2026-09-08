@@ -245,4 +245,28 @@ final class DictationTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testInsertionWaitsForFocusToSettleAfterSwitchingApps() async throws {
+        var checks = 0
+        try await DictationInsertion.waitForStableFocus {
+            checks += 1
+            if checks == 8 {
+                throw DictationFailure(message: "Desktop is still switching")
+            }
+        }
+        XCTAssertGreaterThanOrEqual(checks, 21)
+    }
+
+    @MainActor
+    func testInsertionStopsWhenOriginalFieldNeverRegainsFocus() async {
+        do {
+            try await DictationInsertion.waitForStableFocus {
+                throw DictationFailure(message: "Original field is unavailable")
+            }
+            XCTFail("Insertion must not proceed without stable focus")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Could not settle focus"))
+        }
+    }
+
 }

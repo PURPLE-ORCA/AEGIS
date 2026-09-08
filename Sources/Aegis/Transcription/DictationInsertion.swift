@@ -105,13 +105,30 @@ struct DictationInsertion {
         }
         application.activate(options: [])
         if let window { _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString) }
+        try await Self.waitForStableFocus {
+            _ = AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            try validateFocus()
+        }
+        // Reapply focus after activation and the Space transition have settled.
         _ = AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-        for _ in 0..<20 {
+        try validateFocus()
+    }
+
+    static func waitForStableFocus(_ focus: () throws -> Void) async throws {
+        var stableChecks = 0
+        // ponytail: 600ms settling covers normal Space animations; use transition tracking if longer animations need support.
+        for _ in 0..<60 {
             try Task.checkCancellation()
-            if (try? validateFocus()) != nil { return }
+            do {
+                try focus()
+                stableChecks += 1
+                if stableChecks >= 13 { return }
+            } catch {
+                stableChecks = 0
+            }
             try await Task.sleep(for: .milliseconds(50))
         }
-        try validateFocus()
+        throw DictationFailure(message: "Could not settle focus in the original field. Your transcript is on the clipboard.")
     }
 
     func insert(_ transcript: String) async throws {
