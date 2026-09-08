@@ -17,6 +17,7 @@ final class DictationController {
     private var generation = UUID()
     private var destination: DictationInsertion?
     private var destinationFailure: String?
+    private var destinationNeedsSettling = false
     private var activeDevice: String?
     private var startedAt: Date?
     private var requesting = false
@@ -52,8 +53,11 @@ final class DictationController {
         }.store(in: &subscriptions)
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didActivateApplicationNotification)
             .sink { [weak self] _ in
+                self?.destinationNeedsSettling = true
                 self?.shortcut.applicationChanged()
             }.store(in: &subscriptions)
+        NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.activeSpaceDidChangeNotification)
+            .sink { [weak self] _ in self?.destinationNeedsSettling = true }.store(in: &subscriptions)
         NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification)
             .sink { [weak self] _ in self?.cancel() }.store(in: &subscriptions)
     }
@@ -92,6 +96,7 @@ final class DictationController {
         dismissal?.cancel()
         do {
             destination = try DictationInsertion.capture()
+            destinationNeedsSettling = false
             destinationFailure = nil
         } catch let error as DictationCaptureError {
             fail(error)
@@ -186,7 +191,7 @@ final class DictationController {
                         throw DictationFailure(message: targetFailure ?? "There was no text field selected when recording started.")
                     }
                     model.phase = .submitting
-                    try await target.insert(transcript)
+                    try await target.insert(transcript, requiresSettling: destinationNeedsSettling)
                     try Task.checkCancellation()
                     guard token == generation else { return }
                     model.phase = .sent

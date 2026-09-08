@@ -6,6 +6,8 @@ private struct HermesTranscriptionPayload: Decodable {
     let success: Bool
     let transcript: String
     let error: String
+    let importMilliseconds: Double?
+    let transcriptionMilliseconds: Double?
 }
 
 actor HermesHandoffRunner {
@@ -21,11 +23,17 @@ actor HermesHandoffRunner {
             installation: installation,
             audioFile: audioFile
         )
+        let started = ProcessInfo.processInfo.systemUptime
         let output = try await runToCompletion(plan)
+        let totalMilliseconds = (ProcessInfo.processInfo.systemUptime - started) * 1000
         guard let payload = transcriptionPayload(from: output),
               payload.success else {
             let detail = transcriptionPayload(from: output)?.error
             throw HermesHandoffError.transcriptionFailed(detail)
+        }
+        if let imports = payload.importMilliseconds, let transcription = payload.transcriptionMilliseconds {
+            Log.info(String(format: "Dictation timing total_ms=%.1f import_ms=%.1f transcription_ms=%.1f process_and_io_ms=%.1f",
+                totalMilliseconds, imports, transcription, max(0, totalMilliseconds - imports - transcription)))
         }
         let transcript = payload.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !transcript.isEmpty else { throw HermesHandoffError.noSpeech }

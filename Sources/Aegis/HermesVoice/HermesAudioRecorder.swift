@@ -48,6 +48,7 @@ final class HermesAudioRecorder {
         self.audioFile = file
         self.outputURL = url
 
+        var levelThrottle = VoiceLevelThrottle()
         input.installTap(onBus: 0, bufferSize: 1_024, format: format) { buffer, _ in
             do {
                 try file.write(from: buffer)
@@ -56,7 +57,9 @@ final class HermesAudioRecorder {
                 failureHandler?()
                 return
             }
-            levelHandler(Self.normalizedLevel(from: buffer))
+            if levelThrottle.shouldPublish(frames: Int(buffer.frameLength), sampleRate: format.sampleRate) {
+                levelHandler(Self.normalizedLevel(from: buffer))
+            }
         }
 
         tapInstalled = true
@@ -132,5 +135,16 @@ final class HermesAudioRecorder {
         let rms = sqrt(sum / Float(frameLength))
         let decibels = 20 * log10(max(rms, 0.000_001))
         return Double(max(0, min(1, (decibels + 55) / 55)))
+    }
+}
+
+struct VoiceLevelThrottle {
+    private var accumulatedFrames = 0
+
+    mutating func shouldPublish(frames: Int, sampleRate: Double) -> Bool {
+        accumulatedFrames += frames
+        guard Double(accumulatedFrames) >= sampleRate / 30 else { return false }
+        accumulatedFrames = 0
+        return true
     }
 }

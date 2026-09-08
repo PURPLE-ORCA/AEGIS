@@ -99,7 +99,8 @@ struct DictationInsertion {
         return NSRange(location: range.location, length: range.length)
     }
 
-    private func restoreFocus() async throws {
+    private func restoreFocus(requiresSettling: Bool) async throws {
+        if !requiresSettling, (try? validateFocus()) != nil { return }
         guard !application.isTerminated else {
             throw DictationFailure(message: "The original app closed. Your transcript is ready to copy.")
         }
@@ -131,12 +132,12 @@ struct DictationInsertion {
         throw DictationFailure(message: "Could not settle focus in the original field. Your transcript is on the clipboard.")
     }
 
-    func insert(_ transcript: String) async throws {
+    func insert(_ transcript: String, requiresSettling: Bool = true) async throws {
         guard let before = Self.text(in: element) else {
             throw DictationFailure(message: "The original field is no longer available. Your transcript is ready to copy.")
         }
         let expected = try snapshot.replacingSelection(with: transcript, currentText: before)
-        try await restoreFocus()
+        try await restoreFocus(requiresSettling: requiresSettling)
         try Task.checkCancellation()
         guard let currentText = Self.text(in: element) else {
             throw DictationFailure(message: "The original field is no longer available. Your transcript is ready to copy.")

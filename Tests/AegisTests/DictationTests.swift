@@ -269,4 +269,14 @@ final class DictationTests: XCTestCase {
         }
     }
 
+    func testMeterThrottlingKeepsUpdatesBelowThirtyPerSecond() {
+        var throttle = VoiceLevelThrottle()
+        var updates = 0
+        for _ in 0..<46 {
+            if throttle.shouldPublish(frames: 1024, sampleRate: 48_000) { updates += 1 }
+        }
+        XCTAssertEqual(updates, 23)
+        XCTAssertFalse(throttle.shouldPublish(frames: 0, sampleRate: 48_000))
+    }
+
 }
