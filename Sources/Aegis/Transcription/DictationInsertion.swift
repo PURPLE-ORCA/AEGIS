@@ -133,13 +133,6 @@ struct DictationInsertion {
         guard Self.selectedRange(in: element) == snapshot.selection else {
             throw DictationFailure(message: "Could not restore the original cursor position. Your transcript is ready to copy.")
         }
-        let result = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, transcript as CFString)
-        if result == .success {
-            guard Self.text(in: element) == expected else {
-                throw DictationFailure(message: "The app did not confirm the inserted text. Check the field before trying again.")
-            }
-            return
-        }
         guard Self.text(in: element) == before else {
             throw DictationFailure(message: "The field changed during insertion. Check the text before trying again.")
         }
