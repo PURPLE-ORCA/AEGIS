@@ -26,6 +26,62 @@ final class DictationTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "dictationMicrophoneID"), "missing-device")
     }
 
+    @MainActor
+    func testStopDuringMicrophonePreparationAllowsRetryBeforeOldRequestReturns() async {
+        _ = NSApplication.shared
+        var pending: [CheckedContinuation<Bool, Never>] = []
+        let controller = DictationController(settings: SettingsStore(), requestMicrophone: {
+            await withCheckedContinuation { pending.append($0) }
+        })
+        controller.prepareMicrophone()
+        while pending.isEmpty { await Task.yield() }
+        let oldOperation = controller.operation
+        controller.handle(.stop)
+        XCTAssertFalse(controller.requesting)
+        XCTAssertNil(controller.operation)
+        controller.prepareMicrophone()
+        while pending.count < 2 { await Task.yield() }
+        let retry = controller.operation
+        pending.removeFirst().resume(returning: true)
+        await oldOperation?.value
+        XCTAssertTrue(controller.requesting, "A late callback must not change the retry")
+        XCTAssertNotNil(controller.operation)
+        controller.handle(.stop)
+        pending.removeFirst().resume(returning: false)
+        await retry?.value
+        XCTAssertFalse(controller.requesting)
+        XCTAssertNil(controller.operation)
+        controller.stop()
+    }
+
+    @MainActor
+    func testMicrophonePreparationDeadlineReleasesOperationAndAllowsRetry() async throws {
+        _ = NSApplication.shared
+        var pending: [CheckedContinuation<Bool, Never>] = []
+        let settings = SettingsStore()
+        let controller = DictationController(settings: settings, preparationLimit: .milliseconds(20), requestMicrophone: {
+            await withCheckedContinuation { pending.append($0) }
+        })
+        controller.prepareMicrophone()
+        while pending.isEmpty { await Task.yield() }
+        let oldOperation = controller.operation
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(controller.requesting)
+        XCTAssertNil(controller.operation)
+        XCTAssertTrue(settings.dictationStatus.contains("took too long"))
+        controller.prepareMicrophone()
+        while pending.count < 2 { await Task.yield() }
+        let retry = controller.operation
+        XCTAssertTrue(controller.requesting)
+        pending.removeFirst().resume(returning: true)
+        await oldOperation?.value
+        XCTAssertTrue(controller.requesting)
+        controller.handle(.stop)
+        pending.removeFirst().resume(returning: false)
+        await retry?.value
+        controller.stop()
+    }
+
     private func tap(_ state: inout DictationShortcutState, key: UInt16 = 56, at time: Double) -> DictationShortcutState.Action? {
         XCTAssertNil(state.shift(code: key, down: true, at: time))
         return state.shift(code: key, down: false, at: time + 0.05)

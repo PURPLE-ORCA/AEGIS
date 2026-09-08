@@ -94,7 +94,12 @@ final class DictationMicrophoneMonitor: ObservableObject {
 actor DictationAudio {
     private let recorder = HermesAudioRecorder()
     func start(device: AudioDeviceID, level: @escaping (Double) -> Void, failure: @escaping () -> Void) throws {
+        try Task.checkCancellation()
         _ = try recorder.start(deviceID: device, levelHandler: level, failureHandler: failure)
+        if Task.isCancelled {
+            recorder.cancel()
+            throw CancellationError()
+        }
     }
     func stop() -> URL? { recorder.stop() }
     func cancel() { recorder.cancel() }

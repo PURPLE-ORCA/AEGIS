@@ -4,15 +4,17 @@ import Combine
 
 @MainActor
 final class DictationController {
+    private let preparationLimit: Duration
+    private let requestMicrophone: () async -> Bool
     private let settings: SettingsStore
     private let shortcut = GlobalDictationShortcut()
-    private let audio = DictationAudio()
+    private var audio = DictationAudio()
     private let outputMute = DictationOutputMute()
     private let runner = HermesHandoffRunner()
     private let model = HermesVoiceCapsuleModel()
     private lazy var capsule = HermesVoiceCapsuleWindowController(model: model)
     private var subscriptions = Set<AnyCancellable>()
-    private var operation: Task<Void, Never>?
+    private(set) var operation: Task<Void, Never>?
     private var timeout: Task<Void, Never>?
     private var dismissal: Task<Void, Never>?
     private var generation = UUID()
@@ -21,11 +23,13 @@ final class DictationController {
     private var destinationNeedsSettling = false
     private var activeDevice: String?
     private var startedAt: Date?
-    private var requesting = false
-    private var stopRequested = false
+    private(set) var requesting = false
     private var enabled = false
 
-    init(settings: SettingsStore) {
+    init(settings: SettingsStore, preparationLimit: Duration = .seconds(10),
+         requestMicrophone: @escaping () async -> Bool = HermesMicrophonePermission.request) {
+        self.preparationLimit = preparationLimit
+        self.requestMicrophone = requestMicrophone
         self.settings = settings
         model.isDictation = true
     }
@@ -89,13 +93,13 @@ final class DictationController {
         subscriptions.removeAll()
     }
 
-    private func handle(_ action: DictationShortcutState.Action) {
+    func handle(_ action: DictationShortcutState.Action) {
         switch action {
         case .start:
             guard operation == nil, startedAt == nil, !requesting else { shortcut.reset(); return }
             begin()
         case .stop:
-            if requesting { stopRequested = true }
+            if requesting { cancel() }
             else if startedAt != nil { finish() }
         case .cancel: cancel()
         }
@@ -115,22 +119,37 @@ final class DictationController {
             destination = nil
             destinationFailure = error.localizedDescription
         }
+        prepareMicrophone()
+        capsule.present()
+    }
+
+    func prepareMicrophone() {
+        let audio = DictationAudio()
+        self.audio = audio
         generation = UUID()
         let token = generation
         requesting = true
-        stopRequested = false
         model.phase = .requestingPermission
         model.level = 0
         model.projectName = "Dictation"
-        capsule.present()
+        settings.dictationStatus = "Preparing microphone…"
+        timeout = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: preparationLimit)
+            guard !Task.isCancelled, token == generation, requesting else { return }
+            Log.error("Dictation preparation timed out")
+            cancel()
+            fail(DictationFailure(message: "Microphone preparation took too long. Try dictating again."))
+        }
         operation = Task { [weak self] in
             guard let self else { return }
             do {
-                let granted = await HermesMicrophonePermission.request()
+                Log.info("Dictation preparation stage=permission")
+                let granted = await requestMicrophone()
                 guard token == generation, !Task.isCancelled else { return }
                 guard granted else { throw HermesHandoffError.microphoneDenied }
-                if stopRequested { cancel(); return }
                 let preference = settings.dictationMicrophoneID
+                Log.info("Dictation preparation stage=devices")
                 let devices = await Task.detached { DictationMicrophone.available() }.value
                 guard token == generation, !Task.isCancelled else { return }
                 guard let device = DictationMicrophone.resolve(preference: preference, devices: devices) else {
@@ -138,7 +157,11 @@ final class DictationController {
                 }
                 activeDevice = device.id
                 model.projectName = device.name
-                if settings.dictationMuteWhileRecording { try outputMute.mute() }
+                if settings.dictationMuteWhileRecording {
+                    Log.info("Dictation preparation stage=mute-output")
+                    try outputMute.mute()
+                }
+                Log.info("Dictation preparation stage=audio-start")
                 try await audio.start(device: device.deviceID, level: { [weak self] level in
                     Task { @MainActor in
                         guard let self, token == self.generation else { return }
@@ -152,12 +175,13 @@ final class DictationController {
                     }
                 })
                 guard token == generation, !Task.isCancelled else { return }
+                Log.info("Dictation preparation stage=recording")
+                timeout?.cancel()
                 requesting = false
                 operation = nil
                 startedAt = Date()
                 model.phase = .recording
                 settings.dictationStatus = DictationMicrophoneMonitor.shared.status(preference: preference)
-                if stopRequested { finish(); return }
                 timeout = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(120))
                     guard !Task.isCancelled else { return }
@@ -165,10 +189,7 @@ final class DictationController {
                 }
             } catch {
                 guard token == generation else { return }
-                requesting = false
-                await audio.cancel()
-                guard token == generation else { return }
-                operation = nil
+                cancel()
                 fail(error)
             }
         }
@@ -234,20 +255,28 @@ final class DictationController {
         restoreOutputSound()
         generation = UUID()
         operation?.cancel()
-        // Keep the operation occupied until cleanup completes, so old work cannot remove a new recording.
+        // Transcription cleanup stays serialized; preparation uses a recorder owned by that attempt.
         let previous = operation
+        let audio = audio
         let token = generation
-        operation = Task { [weak self] in
-            guard let self else { return }
-            await runner.stop()
-            await previous?.value
-            await audio.cancel()
-            if token == generation { operation = nil }
+        if requesting {
+            // A stalled preparation must not hold the next attempt; its recorder is never reused.
+            operation = nil
+            self.audio = DictationAudio()
+            Task { await audio.cancel() }
+        } else {
+            operation = Task { [weak self] in
+                guard let self else { return }
+                await runner.stop()
+                await previous?.value
+                await audio.cancel()
+                if token == generation { operation = nil }
+            }
         }
         timeout?.cancel()
         dismissal?.cancel()
+        if requesting { settings.dictationStatus = enabled ? "Ready" : "" }
         requesting = false
-        stopRequested = false
         startedAt = nil
         activeDevice = nil
         destination = nil
