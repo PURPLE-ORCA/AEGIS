@@ -99,3 +99,7 @@ echo '{"session_id":"test","hook_event_name":"SessionStart","cwd":"/tmp"}' \
 ```
 
 This repository is personal and private. It is not distributed as an open-source project.
+
+## Potential future features
+
+- Background dictation insertion into compatible apps, with verified delivery to the original field without activating its window. Keep return-and-paste as the compatibility fallback; do not assume every editor supports background accessibility writes.

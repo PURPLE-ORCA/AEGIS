@@ -78,6 +78,13 @@ struct DictationInsertion {
         }
         var value: CFTypeRef?
         let app = AXUIElementCreateApplication(application.processIdentifier)
+        if let window {
+            var focusedWindow: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &focusedWindow) == .success,
+                  let focusedWindow, CFEqual(focusedWindow, window) else {
+                throw DictationFailure(message: "The original window is not focused. Your transcript is ready to copy.")
+            }
+        }
         guard AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &value) == .success,
               let value, CFEqual(value, element) else {
             throw DictationFailure(message: "The original field is no longer available. Your transcript is ready to copy.")
@@ -105,7 +112,12 @@ struct DictationInsertion {
             throw DictationFailure(message: "The original app closed. Your transcript is ready to copy.")
         }
         application.activate(options: [])
-        if let window { _ = AXUIElementPerformAction(window, kAXRaiseAction as CFString) }
+        if let window {
+            _ = AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+            _ = AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+            let result = AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+            Log.info("Dictation window raise pid=\(application.processIdentifier) result=\(result.rawValue)")
+        }
         try await Self.waitForStableFocus {
             _ = AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
             try validateFocus()
@@ -133,16 +145,21 @@ struct DictationInsertion {
     }
 
     func insert(_ transcript: String, requiresSettling: Bool = true) async throws {
+        var stage = "original-text"
+        var inserted = false
+        defer { Log.info("Dictation insertion pid=\(application.processIdentifier) stage=\(stage) inserted=\(inserted)") }
         guard let before = Self.text(in: element) else {
             throw DictationFailure(message: "The original field is no longer available. Your transcript is ready to copy.")
         }
         let expected = try snapshot.replacingSelection(with: transcript, currentText: before)
+        stage = "restore-focus"
         try await restoreFocus(requiresSettling: requiresSettling)
         try Task.checkCancellation()
         guard let currentText = Self.text(in: element) else {
             throw DictationFailure(message: "The original field is no longer available. Your transcript is ready to copy.")
         }
         _ = try snapshot.replacingSelection(with: transcript, currentText: currentText)
+        stage = "restore-selection"
         var range = CFRange(location: snapshot.selection.location, length: snapshot.selection.length)
         guard let value = AXValueCreate(.cfRange, &range) else {
             throw DictationFailure(message: "Could not restore the original cursor position.")
@@ -184,13 +201,27 @@ struct DictationInsertion {
         }
         down.flags = .maskCommand
         up.flags = .maskCommand
-        down.postToPid(application.processIdentifier)
-        up.postToPid(application.processIdentifier)
-        for _ in 0..<20 {
-            try await Task.sleep(for: .milliseconds(50))
-            try validateFocus()
-            if Self.text(in: element) == expected { return }
+        try Task.checkCancellation()
+        try validateFocus()
+        stage = "paste-verification"
+        // Send through normal keyboard routing only after verifying the exact destination.
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+        try await Self.verifyPaste(before: before, expected: expected) {
+            Self.text(in: element)
         }
-        throw DictationFailure(message: "The app did not confirm Paste. Check the field before dictating again.")
+        inserted = true
+    }
+
+    static func verifyPaste(before: String, expected: String, readText: () -> String?) async throws {
+        for _ in 0..<60 {
+            try await Task.sleep(for: .milliseconds(50))
+            let current = readText()
+            if current == expected { return }
+            guard current == before else {
+                throw DictationFailure(message: "The field changed unexpectedly after Paste. Check it before pasting your saved transcript.")
+            }
+        }
+        throw DictationFailure(message: "No inserted text was detected in the original field. Your transcript is saved on the clipboard.")
     }
 }

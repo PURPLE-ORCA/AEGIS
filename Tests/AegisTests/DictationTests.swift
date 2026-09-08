@@ -279,4 +279,29 @@ final class DictationTests: XCTestCase {
         XCTAssertFalse(throttle.shouldPublish(frames: 0, sampleRate: 48_000))
     }
 
+    @MainActor
+    func testPasteVerificationWaitsForDelayedEditorUpdate() async throws {
+        var reads = 0
+        try await DictationInsertion.verifyPaste(before: "Original", expected: "Original words") {
+            reads += 1
+            return reads < 24 ? "Original" : "Original words"
+        }
+        XCTAssertEqual(reads, 24)
+    }
+
+    @MainActor
+    func testPasteVerificationRejectsUnexpectedEditsWithoutRetrying() async {
+        var reads = 0
+        do {
+            try await DictationInsertion.verifyPaste(before: "Original", expected: "Original words") {
+                reads += 1
+                return "User edit"
+            }
+            XCTFail("Unexpected edits must not be reported as inserted")
+        } catch {
+            XCTAssertEqual(reads, 1)
+            XCTAssertTrue(error.localizedDescription.contains("changed unexpectedly"))
+        }
+    }
+
 }
