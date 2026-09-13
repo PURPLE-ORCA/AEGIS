@@ -8,6 +8,8 @@ enum HermesVoiceHandoffPhase: Equatable {
     case transcribing
     case submitting
     case sent
+    case pasteUnverified
+    case transcriptReady
     case failed(String)
 
     var title: String {
@@ -22,6 +24,10 @@ enum HermesVoiceHandoffPhase: Equatable {
             return "Transcribing…"
         case .submitting:
             return "Sending to Hermes…"
+        case .pasteUnverified:
+            return "Check pasted text"
+        case .transcriptReady:
+            return "Copied to clipboard"
         case .sent:
             return "Sent to Hermes"
         case .failed:
@@ -35,6 +41,8 @@ enum HermesVoiceHandoffPhase: Equatable {
             return "mic.fill"
         case .transcribing, .submitting:
             return "waveform"
+        case .pasteUnverified, .transcriptReady:
+            return "doc.on.clipboard"
         case .sent:
             return "checkmark"
         case .failed:
@@ -56,15 +64,33 @@ enum HermesVoiceHandoffPhase: Equatable {
     }
 
     var detail: String? {
+        if case .pasteUnverified = self { return "Transcript saved in Settings" }
+        if case .transcriptReady = self { return "Check the field before pasting" }
         if case .failed(let message) = self { return message }
-        if case .requestingPermission = self { return "Confirm once, then keep holding" }
+        if case .requestingPermission = self { return "Allow microphone access if prompted" }
         return nil
     }
 }
 
 @MainActor
 final class HermesVoiceCapsuleModel: ObservableObject {
-    @Published var phase: HermesVoiceHandoffPhase = .idle
+    @Published var isDictation = false
+    @Published var stopHint = "Release"
+    var title: String {
+        guard isDictation else { return phase.title }
+        switch phase {
+        case .idle: return "Ready"
+        case .requestingPermission: return "Preparing microphone…"
+        case .submitting: return "Inserting text…"
+        case .sent: return "Text inserted"
+        case .failed: return "Dictation stopped"
+        default: return phase.title
+        }
+    }
+    @Published var recordingStartedAt: Date?
+    @Published var phase: HermesVoiceHandoffPhase = .idle {
+        didSet { if phase == .recording, oldValue != .recording { recordingStartedAt = Date() } }
+    }
     @Published var level: Double = 0
     @Published var target: HermesHandoffTarget = .newSession
     @Published var projectName = "PURPLE-VAULT"
@@ -88,7 +114,7 @@ struct HermesVoiceCapsuleView: View {
             .frame(width: 38, height: 38)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(model.phase.title)
+                Text(model.title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -97,11 +123,11 @@ struct HermesVoiceCapsuleView: View {
                     Text(detail)
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
-                        .lineLimit(1)
+                        .lineLimit(2)
                 } else if model.phase == .recording {
                     levelMeter
                 } else {
-                    Text("\(model.target.capsuleLabel) · \(model.projectName)")
+                    Text(model.isDictation ? model.projectName : "\(model.target.capsuleLabel) · \(model.projectName)")
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(1)
@@ -111,9 +137,9 @@ struct HermesVoiceCapsuleView: View {
             Spacer(minLength: 4)
 
             if model.phase == .recording {
-                Text("RELEASE")
+                Text(model.stopHint)
                     .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .tracking(0.8)
+
                     .foregroundStyle(model.phase.accent)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
@@ -132,8 +158,9 @@ struct HermesVoiceCapsuleView: View {
         )
         .padding(20)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(model.phase.title)
-        .accessibilityValue(model.phase.detail ?? "\(model.target.displayName), \(model.projectName)")
+        .accessibilityLabel(model.title)
+        .accessibilityValue(model.phase.detail ?? model.projectName)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: model.phase)
     }
 
     private var isProcessing: Bool {
@@ -162,10 +189,93 @@ struct HermesVoiceCapsuleView: View {
     }
 }
 
+struct DictationNotchView: View {
+    @ObservedObject var model: HermesVoiceCapsuleModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 18) {
+                waveform(mirrored: false)
+                ZStack {
+                    Circle().fill(model.phase.accent.opacity(0.12))
+                    Circle().stroke(
+                        LinearGradient(colors: [Color(red: 0.85, green: 0.53, blue: 1), Color(red: 0.57, green: 0.17, blue: 1)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 3)
+                        .shadow(color: model.phase.accent.opacity(0.55), radius: 10)
+                    Image(systemName: model.phase.symbol)
+                        .font(.system(size: 29, weight: .medium))
+                        .foregroundStyle(.white)
+                        .symbolEffect(.pulse, options: .repeating,
+                            isActive: (model.phase == .transcribing || model.phase == .submitting) && !reduceMotion)
+                }
+                .frame(width: 68, height: 68)
+                waveform(mirrored: true)
+            }
+            Text(model.phase == .recording ? "Recording…" : model.title)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+            if model.phase == .recording, let start = model.recordingStartedAt {
+                TimelineView(.periodic(from: start, by: 1)) { context in
+                    let elapsed = max(0, Int(context.date.timeIntervalSince(start)))
+                    Text(String(format: "%02d:%02d", elapsed / 60, elapsed % 60))
+                        .monospacedDigit()
+                }
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(red: 0.67, green: 0.57, blue: 0.84))
+            } else {
+                Text(model.phase.detail ?? "")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.65))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .padding(.horizontal, 28)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, ScreenDetector.notchHeight / 0.7 + 15)
+        .frame(width: 420, height: ScreenDetector.notchHeight / 0.7 + 170)
+        .background {
+            ZStack {
+                Color.black
+                RadialGradient(colors: [model.phase.accent.opacity(0.18), .clear],
+                    center: .center, startRadius: 12, endRadius: 170)
+            }
+        }
+        .clipShape(NotchShape(cornerRadius: 42))
+        .scaleEffect(0.7, anchor: .top)
+        .frame(width: 294, height: ScreenDetector.notchHeight + 119, alignment: .top)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(model.phase == .recording ? model.stopHint : "")
+    }
+
+    private func waveform(mirrored: Bool) -> some View {
+        HStack(spacing: 5) {
+            ForEach(0..<6) { index in
+                let position = mirrored ? 5 - index : index
+                let profile: [CGFloat] = [8, 12, 22, 38, 22, 16]
+                Capsule()
+                    .fill(LinearGradient(colors: [Color(red: 0.88, green: 0.57, blue: 1), model.phase.accent],
+                        startPoint: .top, endPoint: .bottom))
+                    .opacity(model.phase == .recording ? 0.45 + model.level * 0.55 : 0.25)
+                    .frame(width: 4, height: model.phase == .recording ? 5 + profile[position] * model.level : 5)
+            }
+        }
+        .frame(width: 49, height: 44)
+        .shadow(color: model.phase.accent.opacity(0.4), radius: 7)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.09), value: model.level)
+        .accessibilityHidden(true)
+    }
+}
+
 @MainActor
 final class HermesVoiceCapsuleWindowController: NSWindowController {
+    private let isDictation: Bool
+
     init(model: HermesVoiceCapsuleModel) {
-        let frame = NSRect(x: 0, y: 0, width: 370, height: 108)
+        isDictation = model.isDictation
+        let frame = NSRect(x: 0, y: 0, width: model.isDictation ? 294 : 370,
+            height: model.isDictation ? ScreenDetector.notchHeight + 119 : 108)
         let panel = NSPanel(
             contentRect: frame,
             styleMask: [.borderless, .nonactivatingPanel, .utilityWindow],
@@ -179,7 +289,16 @@ final class HermesVoiceCapsuleWindowController: NSWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.hidesOnDeactivate = false
         panel.isMovable = false
-        panel.contentView = NSHostingView(rootView: HermesVoiceCapsuleView(model: model))
+        panel.ignoresMouseEvents = true
+        let container = NSView(frame: frame)
+        let hosting = NSHostingView(rootView: model.isDictation
+            ? AnyView(DictationNotchView(model: model))
+            : AnyView(HermesVoiceCapsuleView(model: model)))
+        hosting.sizingOptions = []
+        hosting.frame = container.bounds
+        hosting.autoresizingMask = [.width, .height]
+        container.addSubview(hosting)
+        panel.contentView = container
         super.init(window: panel)
     }
 
@@ -191,7 +310,8 @@ final class HermesVoiceCapsuleWindowController: NSWindowController {
         guard let window else { return }
         let screen = ScreenDetector.notchScreen
         let x = screen.frame.midX - window.frame.width / 2
-        let y = screen.frame.maxY - ScreenDetector.notchHeight - window.frame.height - 14
+        let y = isDictation ? screen.frame.maxY - window.frame.height
+            : screen.frame.maxY - ScreenDetector.notchHeight - window.frame.height + 20
         window.setFrameOrigin(NSPoint(x: x, y: y))
         window.alphaValue = 0
         window.orderFrontRegardless()
@@ -203,11 +323,6 @@ final class HermesVoiceCapsuleWindowController: NSWindowController {
 
     func dismiss() {
         guard let window, window.isVisible else { return }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.12
-            window.animator().alphaValue = 0
-        } completionHandler: {
-            DispatchQueue.main.async { window.orderOut(nil) }
-        }
+        window.orderOut(nil)
     }
 }

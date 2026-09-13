@@ -145,6 +145,9 @@ struct Session: Identifiable {
     var model: String?
     /// AI provider identifier.
     var source: String = "codex"
+    /// Parent provider session when this session belongs to a child agent.
+    var parentSessionId: String?
+    var isEphemeral: Bool = false
     /// True when a provider watcher can independently reconcile this session's
     /// durable lifecycle. Hook-only sessions need an inactivity fallback
     /// because a failed provider call may never emit its closing hook.

@@ -3,6 +3,31 @@ import Combine
 import ServiceManagement
 
 final class SettingsStore: ObservableObject {
+    @Published var dictationEnabled: Bool {
+        didSet { UserDefaults.standard.set(dictationEnabled, forKey: "dictationEnabled") }
+    }
+    @Published var dictationMode: DictationMode {
+        didSet { UserDefaults.standard.set(dictationMode.rawValue, forKey: "dictationMode") }
+    }
+    @Published var dictationShiftKey: DictationShiftKey {
+        didSet { UserDefaults.standard.set(dictationShiftKey.rawValue, forKey: "dictationShiftKey") }
+    }
+    @Published var dictationMicrophoneID: String {
+        didSet { UserDefaults.standard.set(dictationMicrophoneID, forKey: "dictationMicrophoneID") }
+    }
+    @Published var dictationMuteWhileRecording: Bool {
+        didSet { UserDefaults.standard.set(dictationMuteWhileRecording, forKey: "dictationMuteWhileRecording") }
+    }
+    @Published var dictationAudioStatus = ""
+    @Published var dictationStatus = ""
+
+    static func registerDictationDefaults(_ defaults: UserDefaults) {
+        defaults.register(defaults: ["dictationEnabled": false, "dictationMode": "toggle",
+                                     "dictationShiftKey": "either", "dictationMicrophoneID": "", "dictationMuteWhileRecording": false])
+    }
+
+    func resetDictationShortcut() { dictationShiftKey = .either }
+
     @Published var companionEnabled: Bool {
         didSet { UserDefaults.standard.set(companionEnabled, forKey: "companionEnabled") }
     }
@@ -43,6 +68,9 @@ final class SettingsStore: ObservableObject {
     }
     @Published var expandOnHover: Bool {
         didSet { UserDefaults.standard.set(expandOnHover, forKey: "expandOnHover") }
+    }
+    @Published var showSubagents: Bool {
+        didSet { UserDefaults.standard.set(showSubagents, forKey: "showSubagents") }
     }
     @Published var keepAwakeMode: AgentKeepAwakeMode {
         didSet { UserDefaults.standard.set(keepAwakeMode.rawValue, forKey: "keepAwakeMode") }
@@ -157,6 +185,12 @@ final class SettingsStore: ObservableObject {
     init() {
         Self.migrateLegacyInstallationIfNeeded()
         let defaults = UserDefaults.standard
+        Self.registerDictationDefaults(defaults)
+        dictationEnabled = defaults.bool(forKey: "dictationEnabled")
+        dictationMode = DictationMode(rawValue: defaults.string(forKey: "dictationMode") ?? "") ?? .toggle
+        dictationShiftKey = DictationShiftKey(rawValue: defaults.string(forKey: "dictationShiftKey") ?? "") ?? .either
+        dictationMuteWhileRecording = defaults.bool(forKey: "dictationMuteWhileRecording")
+        dictationMicrophoneID = defaults.string(forKey: "dictationMicrophoneID") ?? ""
         let preferredHermesDirectory = HermesHandoffConfiguration.preferredWorkingDirectory(
             homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
             fileExists: { FileManager.default.fileExists(atPath: $0.path) }
@@ -175,6 +209,7 @@ final class SettingsStore: ObservableObject {
             "soundProfile": SoundProfile.quietGlass.rawValue,
             "autoExpandOnPermission": true,
             "expandOnHover": true,
+            "showSubagents": false,
             "keepAwakeMode": AgentKeepAwakeMode.off.rawValue,
             "launchAtLogin": false,
             "hasCompletedOnboarding": false,
@@ -205,6 +240,7 @@ final class SettingsStore: ObservableObject {
         }
         self.autoExpandOnPermission = defaults.bool(forKey: "autoExpandOnPermission")
         self.expandOnHover = defaults.bool(forKey: "expandOnHover")
+        self.showSubagents = defaults.bool(forKey: "showSubagents")
         self.keepAwakeMode = AgentKeepAwakeMode(
             rawValue: defaults.string(forKey: "keepAwakeMode") ?? ""
         ) ?? .off

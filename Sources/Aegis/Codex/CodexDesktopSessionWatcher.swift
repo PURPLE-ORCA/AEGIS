@@ -206,6 +206,7 @@ final class CodexDesktopSessionWatcher {
         var id: String?
         var cwd: String?
         var model: String?
+        var parentSessionId: String?
         var active = false
         var lastAssistantMessage: String?
         var tools: [String: String] = [:]
@@ -498,6 +499,7 @@ final class CodexDesktopSessionWatcher {
         if type == "session_meta" {
             state.id = (payload["id"] as? String) ?? (payload["session_id"] as? String)
             state.cwd = payload["cwd"] as? String
+            state.parentSessionId = Self.parentSessionId(from: payload)
             states[path] = state
             return
         }
@@ -515,10 +517,10 @@ final class CodexDesktopSessionWatcher {
                 state.active = true
                 state.lastAssistantMessage = nil
                 state.tools.removeAll()
-                emit(.init(sessionId: sessionId, hookEvent: "UserPromptSubmit", cwd: state.cwd, sessionTitle: titleResolver.title(for: sessionId), source: "codex", model: state.model))
+                emit(.init(sessionId: sessionId, hookEvent: "UserPromptSubmit", cwd: state.cwd, sessionTitle: titleResolver.title(for: sessionId), source: "codex", parentSessionId: state.parentSessionId, model: state.model))
             case "user_message":
                 let text = payload["message"] as? String
-                emit(.init(sessionId: sessionId, hookEvent: "UserPromptSubmit", cwd: state.cwd, userMessage: text, sessionTitle: titleResolver.title(for: sessionId), source: "codex", model: state.model))
+                emit(.init(sessionId: sessionId, hookEvent: "UserPromptSubmit", cwd: state.cwd, userMessage: text, sessionTitle: titleResolver.title(for: sessionId), source: "codex", parentSessionId: state.parentSessionId, model: state.model))
             case "agent_message":
                 state.lastAssistantMessage = payload["message"] as? String
                 if state.active, let message = state.lastAssistantMessage {
@@ -528,11 +530,11 @@ final class CodexDesktopSessionWatcher {
                 state.active = false
                 state.tools.removeAll()
                 let message = (payload["last_agent_message"] as? String) ?? state.lastAssistantMessage
-                emit(.init(sessionId: sessionId, hookEvent: "Stop", cwd: state.cwd, assistantMessage: message, durationMs: payload["duration_ms"] as? Int, sessionTitle: titleResolver.title(for: sessionId), source: "codex", model: state.model))
+                emit(.init(sessionId: sessionId, hookEvent: "Stop", cwd: state.cwd, assistantMessage: message, durationMs: payload["duration_ms"] as? Int, sessionTitle: titleResolver.title(for: sessionId), source: "codex", parentSessionId: state.parentSessionId, model: state.model))
             case "turn_aborted":
                 state.active = false
                 state.tools.removeAll()
-                emit(.init(sessionId: sessionId, hookEvent: "Stop", cwd: state.cwd, sessionTitle: titleResolver.title(for: sessionId), source: "codex", model: state.model))
+                emit(.init(sessionId: sessionId, hookEvent: "Stop", cwd: state.cwd, sessionTitle: titleResolver.title(for: sessionId), source: "codex", parentSessionId: state.parentSessionId, model: state.model))
             default:
                 break
             }
@@ -543,7 +545,7 @@ final class CodexDesktopSessionWatcher {
                 let name = payload["name"] as? String ?? "Tool"
                 if let callId { state.tools[callId] = name }
                 let input = (payload["input"] as? String) ?? (payload["arguments"] as? String)
-                emit(.init(sessionId: sessionId, hookEvent: "PreToolUse", cwd: state.cwd, toolName: name, toolInput: input, sessionTitle: titleResolver.title(for: sessionId), source: "codex", model: state.model))
+                emit(.init(sessionId: sessionId, hookEvent: "PreToolUse", cwd: state.cwd, toolName: name, toolInput: input, sessionTitle: titleResolver.title(for: sessionId), source: "codex", parentSessionId: state.parentSessionId, model: state.model))
             case "custom_tool_call_output", "function_call_output":
                 let name = callId.flatMap { state.tools.removeValue(forKey: $0) } ?? "Tool"
                 let outcome = StructuredToolOutcomeDetector.explicitOutcome(from: payload["output"])
@@ -556,6 +558,7 @@ final class CodexDesktopSessionWatcher {
                     toolOutcome: outcome,
                     sessionTitle: titleResolver.title(for: sessionId),
                     source: "codex",
+                    parentSessionId: state.parentSessionId,
                     model: state.model
                 ))
             case "reasoning":
@@ -577,6 +580,7 @@ final class CodexDesktopSessionWatcher {
             cwd: state.cwd,
             activitySummary: summary,
             source: "codex",
+            parentSessionId: state.parentSessionId,
             model: state.model
         ))
     }
@@ -595,6 +599,15 @@ final class CodexDesktopSessionWatcher {
 
     private func canonicalPath(_ url: URL) -> String {
         url.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    private static func parentSessionId(from payload: [String: Any]) -> String? {
+        guard payload["thread_source"] as? String == "subagent" else { return nil }
+        if let parent = payload["parent_thread_id"] as? String { return parent }
+        let source = payload["source"] as? [String: Any]
+        let subagent = source?["subagent"] as? [String: Any]
+        let spawn = subagent?["thread_spawn"] as? [String: Any]
+        return spawn?["parent_thread_id"] as? String
     }
 
     private func readMetadata(_ url: URL) -> SessionState {
@@ -619,7 +632,8 @@ final class CodexDesktopSessionWatcher {
         return SessionState(
             id: (payload["id"] as? String) ?? (payload["session_id"] as? String),
             cwd: turnContext?.cwd ?? payload["cwd"] as? String,
-            model: turnContext?.model
+            model: turnContext?.model,
+            parentSessionId: Self.parentSessionId(from: payload)
         )
     }
 }

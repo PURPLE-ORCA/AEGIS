@@ -32,6 +32,7 @@ final class SessionStore: ObservableObject {
     private static let codexIdleThreshold: TimeInterval = 5 * 60
     private static let hookOnlyThinkingIdleThreshold: TimeInterval = 15 * 60
     private static let hookOnlyThinkingSources: Set<String> = ["hermes", "antigravity"]
+    private static let silentActiveSessionLifetime: TimeInterval = 24 * 60 * 60
 
     @Published var sessions: [String: Session] = [:]
 
@@ -56,6 +57,7 @@ final class SessionStore: ObservableObject {
     /// the same id (issues #8, #9, #10).
     private var pendingRemovals: [String: Task<Void, Never>] = [:]
     private var skillIssueDetector = SkillIssueDetector()
+    private var showsSubagents = false
 
     init() {
         processSweepTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
@@ -84,6 +86,9 @@ final class SessionStore: ObservableObject {
     ///      sessions retain their provider watcher, while hook-only sessions are
     ///      retired after 15 minutes without progress. Tool and approval states
     ///      remain exempt so long-running commands and user decisions stay visible.
+    ///   4. Silent active-session lease — any provider can miss its closing event.
+    ///      Thinking/tool states with no event for 24 hours are abandoned, while
+    ///      approval states remain visible until the user resolves them.
     func sweepClosedAgents(at now: Date = Date()) {
 
         for (id, session) in sessions {
@@ -124,6 +129,14 @@ final class SessionStore: ObservableObject {
                session.status == .thinking,
                now.timeIntervalSince(session.lastActivityAt) > Self.hookOnlyThinkingIdleThreshold {
                 Log.info("Hook session expired after inactivity source=\(session.source) session=\(id.prefix(8))")
+                shouldClose = true
+            }
+
+            if !shouldClose,
+               session.status == .thinking || session.status == .toolUse,
+               now.timeIntervalSince(session.lastActivityAt) > Self.silentActiveSessionLifetime {
+                // ponytail: 24h is the safety lease until every provider exposes authoritative task liveness.
+                Log.info("Silent active session expired source=\(session.source) session=\(id.prefix(8))")
                 shouldClose = true
             }
 
@@ -173,6 +186,34 @@ final class SessionStore: ObservableObject {
         pendingRemovals.removeValue(forKey: sessionId)
     }
 
+    func setShowsSubagents(_ showsSubagents: Bool) {
+        self.showsSubagents = showsSubagents
+        guard !showsSubagents else { return }
+        for sessionId in sessions.values.compactMap({ session in
+            session.parentSessionId != nil && session.pendingPermission == nil && session.pendingQuestion == nil
+                ? session.id
+                : nil
+        }) {
+            removeHiddenSubagent(sessionId: sessionId)
+        }
+    }
+
+    private func removeHiddenSubagentIfSettled(sessionId: String) {
+        guard let session = sessions[sessionId],
+              session.isEphemeral || (!showsSubagents && session.parentSessionId != nil),
+              session.pendingPermission == nil,
+              session.pendingQuestion == nil else { return }
+        removeHiddenSubagent(sessionId: sessionId)
+    }
+
+    private func removeHiddenSubagent(sessionId: String) {
+        cancelPendingRemoval(sessionId: sessionId)
+        if sessions[sessionId]?.executionState.isConfirmedExecuting == true {
+            onExecutionEvent.send(.ended(sessionId))
+        }
+        sessions.removeValue(forKey: sessionId)
+    }
+
     /// Returns the start time of the process at `pid`, or nil if it's
     /// unreadable. Used to detect PID reuse alongside `kill(pid, 0)`.
     private static func processStartTime(pid: pid_t) -> timeval? {
@@ -218,6 +259,17 @@ final class SessionStore: ObservableObject {
         origin: SessionMessageOrigin = .providerHook
     ) {
         let sessionId = message.sessionId
+        let parentSessionId = message.parentSessionId ?? sessions[sessionId]?.parentSessionId
+        let isEphemeral = message.isEphemeral ?? sessions[sessionId]?.isEphemeral ?? false
+        let hasPendingAttention = sessions[sessionId].map {
+            $0.pendingPermission != nil || $0.pendingQuestion != nil
+        } ?? false
+        if (isEphemeral || (!showsSubagents && parentSessionId != nil)) && !hasPendingAttention && !Self.isAttentionRequest(message) {
+            if sessions[sessionId] != nil {
+                removeHiddenSubagent(sessionId: sessionId)
+            }
+            return
+        }
         guard Self.canonicalEvents.contains(message.hookEvent) else {
             Log.info("Ignoring non-canonical event '\(message.hookEvent)' from source=\(message.source ?? "?") session=\(sessionId.prefix(8))")
             return
@@ -253,7 +305,8 @@ final class SessionStore: ObservableObject {
                 startedAt: now,
                 status: .idle,
                 terminalInfo: message.terminalInfo,
-                source: message.source ?? "codex"
+                source: message.source ?? "codex",
+                parentSessionId: message.parentSessionId
             )
             session.cwdIsPlaceholder = message.cwd == nil
             session.announced = true
@@ -266,6 +319,10 @@ final class SessionStore: ObservableObject {
         if let source = message.source {
             session.source = source
         }
+        if let parentSessionId = message.parentSessionId {
+            session.parentSessionId = parentSessionId
+        }
+        session.isEphemeral = isEphemeral
         if origin == .durableProviderState {
             session.isDurablyTracked = true
         }
@@ -390,10 +447,7 @@ final class SessionStore: ObservableObject {
             // terminal where the user actually answers. (The Hermes bridge has
             // already reshaped clarify's {question,choices} into the canonical
             // questions JSON.) PostToolUse dismisses it once they've answered.
-            let src = message.source ?? "codex"
-            let isMirroredQuestion = (src == "codex" && toolName == "request_user_input")
-                || (src == "hermes" && toolName == "clarify")
-            if isMirroredQuestion,
+            if Self.isMirroredQuestion(message),
                let desc = message.toolInput,
                let parsedQuestions = Self.parseQuestion(desc) {
                 session.status = .waitingPermission
@@ -589,6 +643,18 @@ final class SessionStore: ObservableObject {
                 scheduleRemoval(sessionId: sessionId, after: delay)
             }
         }
+        removeHiddenSubagentIfSettled(sessionId: sessionId)
+    }
+
+    private static func isAttentionRequest(_ message: BridgeMessage) -> Bool {
+        if message.hookEvent == "PermissionRequest" { return true }
+        return message.hookEvent == "PreToolUse" && isMirroredQuestion(message)
+    }
+
+    private static func isMirroredQuestion(_ message: BridgeMessage) -> Bool {
+        let source = message.source ?? "codex"
+        return (source == "codex" && message.toolName == "request_user_input")
+            || (source == "hermes" && message.toolName == "clarify")
     }
 
     private static func normalizedActivitySummary(_ value: String?) -> String? {
@@ -651,6 +717,7 @@ final class SessionStore: ObservableObject {
         sessions[sessionId]?.status = .thinking
         pending.respond(action)
         onEvent.send(.permissionResponded(sessionId, action != .deny))
+        removeHiddenSubagentIfSettled(sessionId: sessionId)
     }
 
     /// Returns the session ID of the next session with a pending permission,
@@ -687,6 +754,7 @@ final class SessionStore: ObservableObject {
         if let session = sessions[sessionId] {
             TerminalJumper.jump(to: session)
         }
+        removeHiddenSubagentIfSettled(sessionId: sessionId)
     }
 
     /// Called from QuestionView with answers keyed by `QuestionItem.id`.
@@ -713,5 +781,6 @@ final class SessionStore: ObservableObject {
         if let data = BridgeResponse.allowWithAnswers(questions: q.questions, answers: answersByText) {
             q.respond(data)
         }
+        removeHiddenSubagentIfSettled(sessionId: sessionId)
     }
 }

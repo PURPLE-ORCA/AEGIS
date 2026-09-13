@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let executionPowerController = AgentExecutionPowerController()
     private let systemPowerConditionMonitor = SystemPowerConditionMonitor()
     private lazy var hermesVoiceHandoffController = HermesVoiceHandoffController(settingsStore: settingsStore)
+    private lazy var dictationController = DictationController(settings: settingsStore)
     private let rateLimitStore = RateLimitStore()
     private let codexDesktopWatcher = CodexDesktopSessionWatcher()
     private let hermesDesktopWatcher = HermesDesktopSessionWatcher()
@@ -54,6 +55,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsStore.$keepAwakeMode
             .sink { [weak self] mode in
                 self?.executionPowerController.update(mode: mode)
+            }
+            .store(in: &cancellables)
+
+        settingsStore.$showSubagents
+            .removeDuplicates()
+            .sink { [weak self] showsSubagents in
+                self?.sessionStore.setShowsSubagents(showsSubagents)
             }
             .store(in: &cancellables)
 
@@ -143,6 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hermesDesktopWatcher.start()
         hermesVoiceHandoffController.start()
+        dictationController.start()
 
         // Never activate a first-run window automatically: the notch is a
         // background utility and must not steal focus. Welcome and What's New
@@ -178,6 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         codexDesktopWatcher.stop()
         hermesDesktopWatcher.stop()
         hermesVoiceHandoffController.stop()
+        dictationController.stop()
         socketServer.stop()
         soundEngine.shutdown()
         cleanupPidFile()

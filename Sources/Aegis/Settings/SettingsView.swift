@@ -5,11 +5,12 @@ import AVFoundation
 // MARK: - Tabs
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case general, appearance, integrations, sound, about
+    case general, appearance, integrations, transcription, sound, about
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .transcription: return "Transcription"
         case .general:      return "General"
         case .appearance:   return "Appearance"
         case .integrations: return "Integrations"
@@ -20,6 +21,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .transcription: return "mic.fill"
         case .general:      return "gearshape.fill"
         case .appearance:   return "paintpalette.fill"
         case .integrations: return "puzzlepiece.extension.fill"
@@ -30,6 +32,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 
     var accentColor: Color {
         switch self {
+        case .transcription: return .purple
         case .general:      return .gray
         case .appearance:   return .purple
         case .integrations: return .blue
@@ -41,6 +44,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     /// One-line description shown under the section title in the hero card.
     var hero: String {
         switch self {
+        case .transcription:
+            return "Dictate into the focused text field with Shift."
         case .general:
             return "Launch behavior, agent power, and notch expansion preferences."
         case .appearance:
@@ -63,6 +68,8 @@ struct SettingsView: View {
     var onPreviewFile: ((String) -> Void)? = nil
     @State private var soundLibraryVersion = 0   // bump to refresh library list
 
+    @ObservedObject private var dictationTranscripts = DictationTranscriptController.shared
+    @ObservedObject private var microphones = DictationMicrophoneMonitor.shared
     @State private var selection: SettingsSection = .general
     @State private var soundReloaded = false
 
@@ -249,6 +256,7 @@ struct SettingsView: View {
             }
 
             switch selection {
+            case .transcription: transcriptionForm
             case .general:      generalForm
             case .appearance:   appearanceForm
             case .integrations: integrationsForm
@@ -258,6 +266,78 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+
+    @ViewBuilder
+    private var transcriptionForm: some View {
+        Section {
+            Toggle("Enable dictation", isOn: Binding(
+                get: { settingsStore.dictationEnabled },
+                set: { enabled in
+                    settingsStore.dictationEnabled = enabled
+                    if enabled && !DictationPermissions.current().isReady { DictationPermissionSetup.shared.show() }
+                }
+            ))
+            Picker("Recording mode", selection: $settingsStore.dictationMode) {
+                ForEach(DictationMode.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            Picker("Shortcut", selection: $settingsStore.dictationShiftKey) {
+                ForEach(DictationShiftKey.allCases, id: \.self) { key in
+                    Text(key == .either ? "Double-press Shift" : "Double-press \(key.title)").tag(key)
+                }
+            }
+            HStack {
+                Text(settingsStore.dictationMode == .hold
+                     ? "Hold \(settingsStore.dictationShiftKey.title) briefly to start. Release to stop."
+                     : "Press and release Shift twice to start or stop. Press Escape to cancel.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Spacer()
+                Button("Reset shortcut") { settingsStore.resetDictationShortcut() }
+            }
+        }
+        Section("Microphone") {
+            Toggle("Mute while recording", isOn: $settingsStore.dictationMuteWhileRecording)
+            if !settingsStore.dictationAudioStatus.isEmpty {
+                Text(settingsStore.dictationAudioStatus).font(.callout).foregroundStyle(.red)
+            }
+            Text("Silence system audio during dictation and restore it when recording ends.")
+                .font(.callout).foregroundStyle(.secondary)
+            Picker("Input device", selection: $settingsStore.dictationMicrophoneID) {
+                Text("Automatic, prefer built-in microphone").tag("")
+                ForEach(microphones.devices) { Text($0.name).tag($0.id) }
+                if !settingsStore.dictationMicrophoneID.isEmpty &&
+                    !microphones.devices.contains(where: { $0.id == settingsStore.dictationMicrophoneID }) {
+                    Text("Selected microphone, disconnected").tag(settingsStore.dictationMicrophoneID)
+                }
+            }
+            Text(microphones.status(preference: settingsStore.dictationMicrophoneID))
+                .font(.callout).foregroundStyle(.secondary)
+        }
+        if !dictationTranscripts.text.isEmpty {
+            Section("Uninserted transcript") {
+                Text(dictationTranscripts.text).textSelection(.enabled)
+                Text("Your uninserted text is kept here until you clear it or quit Aegis.")
+                    .font(.callout).foregroundStyle(.secondary)
+                HStack {
+                    Button("Copy text") {
+                        do {
+                            try dictationTranscripts.copy()
+                            settingsStore.dictationStatus = "Copied to clipboard"
+                        } catch {
+                            settingsStore.dictationStatus = error.localizedDescription
+                        }
+                    }
+                    Button("Clear") { dictationTranscripts.clear() }
+                }
+            }
+        }
+        Section("Access") {
+            Button("Set up dictation access…") { DictationPermissionSetup.shared.show() }
+            if !settingsStore.dictationStatus.isEmpty {
+                Text(settingsStore.dictationStatus).font(.callout).foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
     }
 
     // MARK: - General
@@ -288,6 +368,14 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Auto-expand on permission request")
                     Text("Pop the notch open whenever a session is waiting for your approval.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            Toggle(isOn: $settingsStore.showSubagents) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show subagents")
+                    Text("Display child agent sessions as separate cards. Hidden subagents still appear when they need your input.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }

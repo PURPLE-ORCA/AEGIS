@@ -81,6 +81,7 @@ enum HermesHandoffError: LocalizedError {
     case invalidWorkingDirectory
     case microphoneDenied
     case microphoneUnavailable
+    case recordingEmpty
     case recordingFailed
     case noSpeech
     case transcriptionFailed(String?)
@@ -96,6 +97,8 @@ enum HermesHandoffError: LocalizedError {
             return "Allow microphone access in System Settings."
         case .microphoneUnavailable:
             return "No microphone is available."
+        case .recordingEmpty:
+            return "No audio reached Aegis. Check the selected microphone and try again."
         case .recordingFailed:
             return "The recording could not be completed."
         case .noSpeech:
@@ -118,10 +121,18 @@ enum HermesHandoffProcessPlanner {
     static let transcriptionScript = """
 import json
 import sys
-from tools.voice_mode import transcribe_recording
+import time
 
+import_started = time.perf_counter()
+from tools.voice_mode import transcribe_recording
+import_ms = (time.perf_counter() - import_started) * 1000
+
+transcription_started = time.perf_counter()
 result = transcribe_recording(sys.argv[1])
+transcription_ms = (time.perf_counter() - transcription_started) * 1000
 print(json.dumps({
+    "importMilliseconds": import_ms,
+    "transcriptionMilliseconds": transcription_ms,
     "success": bool(result.get("success")),
     "transcript": (result.get("transcript") or "").strip(),
     "error": str(result.get("error") or "")
