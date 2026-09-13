@@ -31,7 +31,47 @@ struct DictationInsertionSnapshot {
               selection.location <= length, selection.length <= length - selection.location else {
             throw DictationFailure(message: "The original text changed while you were dictating. Copy your transcript to keep those edits.")
         }
-        return (text as NSString).replacingCharacters(in: selection, with: transcript)
+        return Self.replacing(selection, in: text, with: transcript)
+    }
+
+    static func replacing(_ range: NSRange, in text: String, with transcript: String) -> String {
+        (text as NSString).replacingCharacters(in: range, with: transcript)
+    }
+
+    static func isValidRange(_ range: NSRange, in text: String) -> Bool {
+        let length = (text as NSString).length
+        return range.location >= 0 && range.length >= 0 &&
+               range.location <= length && range.length <= length - range.location
+    }
+
+    /// Decide where Paste should land. Prefers the live caret ("where I am right now").
+    /// Falls back to the capture-time snapshot when the live caret collapsed to the
+    /// start of unchanged text (a common artifact of programmatic refocusing), and to
+    /// end-of-text when no cursor is exposed at all — never leave the caret at 0.
+    static func effectiveInsertionRange(
+        snapshotSelection: NSRange?,
+        snapshotText: String?,
+        liveSelection: NSRange?,
+        currentText: String?
+    ) -> NSRange? {
+        if let live = liveSelection, let current = currentText, isValidRange(live, in: current) {
+            if live.location == 0, live.length == 0,
+               let snapshot = snapshotSelection, snapshot.location != 0,
+               isValidRange(snapshot, in: current),
+               snapshotText == nil || snapshotText == current {
+                return snapshot
+            }
+            return live
+        }
+        let reference = currentText ?? snapshotText
+        if let snapshot = snapshotSelection, let reference, isValidRange(snapshot, in: reference) {
+            return snapshot
+        }
+        if let current = currentText {
+            let length = (current as NSString).length
+            return NSRange(location: length, length: 0)
+        }
+        return nil
     }
 }
 
@@ -78,6 +118,7 @@ struct DictationInsertion {
         }
         let snapshot = DictationInsertionSnapshot(text: text, selection: selection)
         _ = try snapshot.replacingSelection(with: "", currentText: text)
+        Log.info("Dictation capture role=\(elementRole as? String ?? "?") textLength=\((text as NSString?)?.length ?? -1) selection=\(String(describing: selection))")
         return Self(application: application, element: element, window: window, snapshot: snapshot)
     }
 
@@ -159,20 +200,37 @@ struct DictationInsertion {
         var inserted = false
         defer { Log.info("Dictation insertion pid=\(application.processIdentifier) stage=\(stage) inserted=\(inserted)") }
         let before = Self.text(in: element)
-        let expected = try snapshot.replacingSelection(with: transcript, currentText: before)
+        _ = try snapshot.replacingSelection(with: transcript, currentText: before)
         stage = "restore-focus"
         try await restoreFocus(requiresSettling: requiresSettling)
         try Task.checkCancellation()
         let currentText = Self.text(in: element)
         _ = try snapshot.replacingSelection(with: transcript, currentText: currentText)
         stage = "restore-selection"
-        if let selection = snapshot.selection {
-            var range = CFRange(location: selection.location, length: selection.length)
+        let liveSelection = Self.selectedRange(in: element)
+        let effective = DictationInsertionSnapshot.effectiveInsertionRange(
+            snapshotSelection: snapshot.selection,
+            snapshotText: snapshot.text,
+            liveSelection: liveSelection,
+            currentText: currentText)
+        Log.info("Dictation caret snapshot=\(String(describing: snapshot.selection)) live=\(String(describing: liveSelection)) effective=\(String(describing: effective))")
+        let expected: String?
+        if let effective, let currentText {
+            expected = DictationInsertionSnapshot.replacing(effective, in: currentText, with: transcript)
+        } else if snapshot.selection == nil, liveSelection == nil {
+            // Neither capture nor refocus exposed a cursor (and the text is unreadable):
+            // paste at the app's current caret instead of forcing position 0.
+            expected = nil
+        } else {
+            expected = try snapshot.replacingSelection(with: transcript, currentText: currentText)
+        }
+        if let effective {
+            var range = CFRange(location: effective.location, length: effective.length)
             guard let value = AXValueCreate(.cfRange, &range) else {
                 throw DictationFailure(message: "Could not restore the original cursor position.")
             }
             _ = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, value)
-            guard Self.selectedRange(in: element) == snapshot.selection else {
+            guard Self.selectedRange(in: element) == effective else {
                 throw DictationFailure(message: "Could not restore the original cursor position. Your transcript is ready to copy.")
             }
         }
@@ -211,6 +269,17 @@ struct DictationInsertion {
         up.flags = .maskCommand
         try Task.checkCancellation()
         try validateFocus()
+        if let effective, Self.selectedRange(in: element) != effective {
+            // The caret drifted while the clipboard was prepared (e.g. the target
+            // app re-settled focus). Re-apply once so Paste does not land at 0.
+            var range = CFRange(location: effective.location, length: effective.length)
+            if let value = AXValueCreate(.cfRange, &range) {
+                _ = AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, value)
+            }
+            guard Self.selectedRange(in: element) == effective else {
+                throw DictationFailure(message: "The cursor moved before insertion. Your transcript is ready to copy.")
+            }
+        }
         stage = "paste-verification"
         // Send through normal keyboard routing only after verifying the exact destination.
         down.post(tap: .cghidEventTap)

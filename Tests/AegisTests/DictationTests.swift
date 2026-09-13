@@ -369,6 +369,71 @@ final class DictationTests: XCTestCase {
         XCTAssertThrowsError(try noCursor.replacingSelection(with: " words", currentText: "Edited"))
     }
 
+    func testEffectiveRangePrefersLiveCaretOverStaleSnapshot() {
+        // User kept typing position: caret at end when pasting starts.
+        XCTAssertEqual(
+            DictationInsertionSnapshot.effectiveInsertionRange(
+                snapshotSelection: NSRange(location: 8, length: 0),
+                snapshotText: "Original",
+                liveSelection: NSRange(location: 8, length: 0),
+                currentText: "Original"),
+            NSRange(location: 8, length: 0))
+        // User moved the caret mid-dictation: respect where they are now.
+        XCTAssertEqual(
+            DictationInsertionSnapshot.effectiveInsertionRange(
+                snapshotSelection: NSRange(location: 8, length: 0),
+                snapshotText: "Original",
+                liveSelection: NSRange(location: 3, length: 2),
+                currentText: "Original"),
+            NSRange(location: 3, length: 2))
+    }
+
+    func testEffectiveRangeRestoresSnapshotWhenRefocusCollapsesCaretToStart() {
+        // Programmatic refocus commonly resets the caret to 0; the snapshot (end
+        // of the user's lines) is the intended position, not the start.
+        let text = "Line one\nLine two\nLine three"
+        let end = (text as NSString).length
+        XCTAssertEqual(
+            DictationInsertionSnapshot.effectiveInsertionRange(
+                snapshotSelection: NSRange(location: end, length: 0),
+                snapshotText: text,
+                liveSelection: NSRange(location: 0, length: 0),
+                currentText: text),
+            NSRange(location: end, length: 0))
+        XCTAssertEqual(
+            DictationInsertionSnapshot.replacing(
+                NSRange(location: end, length: 0), in: text, with: " dictated"),
+            text + " dictated")
+    }
+
+    func testEffectiveRangeFallsBackToEndWhenNoCursorIsExposed() {
+        let text = "Line one\nLine two"
+        let end = (text as NSString).length
+        // Field exposes text but no cursor: append at the end, never at the start.
+        XCTAssertEqual(
+            DictationInsertionSnapshot.effectiveInsertionRange(
+                snapshotSelection: nil,
+                snapshotText: text,
+                liveSelection: nil,
+                currentText: text),
+            NSRange(location: end, length: 0))
+        // Live caret unreadable but the snapshot survived: keep it.
+        XCTAssertEqual(
+            DictationInsertionSnapshot.effectiveInsertionRange(
+                snapshotSelection: NSRange(location: 4, length: 0),
+                snapshotText: text,
+                liveSelection: nil,
+                currentText: text),
+            NSRange(location: 4, length: 0))
+        // Nothing readable anywhere: no forced position.
+        XCTAssertNil(
+            DictationInsertionSnapshot.effectiveInsertionRange(
+                snapshotSelection: nil,
+                snapshotText: nil,
+                liveSelection: nil,
+                currentText: nil))
+    }
+
     @MainActor
     func testRecordingMuteRestoresOnlyPreviouslyAudibleOutputs() throws {
         var muted: [UInt32: Bool] = [1: false, 2: true]
